@@ -10,7 +10,7 @@ import org.springframework.core.io.ClassPathResource
 import java.io.ByteArrayInputStream
 import java.io.FileInputStream
 import java.util.*
-import javax.annotation.PostConstruct
+import jakarta.annotation.PostConstruct
 
 @Configuration
 class FirebaseConfig {

@@ -16,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional
 class NotificationService(
     private val notificationRepository: NotificationRepository,
     private val userRepository: UserRepository,
-    private val pushNotificationService: PushNotificationService
+    private val pushNotificationService: PushNotificationService,
+    private val sessionRepository: com.exchangemingle.backend.repository.SessionRepository
 ) {
 
     @Transactional
@@ -109,4 +110,36 @@ class NotificationService(
             createdAt         = n.createdAt.toInstant(ZoneOffset.UTC).toString()
         )
     }
+    // ── Raw push — for Postman testing ───────────────────────────────────────
+    fun sendRawPush(deviceToken: String, title: String, body: String,
+                    data: Map<String, String> = emptyMap()): Boolean =
+        pushNotificationService.sendNotification(deviceToken, title, body, data)
+
+    // ── Force-fire the 5-min reminder for a specific session (testing) ───────
+    fun sendSessionReminderById(sessionId: Long) {
+        val session = sessionRepository.findById(sessionId)
+            .orElseThrow { RuntimeException("Session $sessionId not found") }
+        val data = mapOf(
+            "type"      to "SESSION_REMINDER",
+            "sessionId" to sessionId.toString(),
+            "action"    to "JOIN_SESSION"
+        )
+        session.teacher?.fcmToken?.let { token ->
+            pushNotificationService.sendNotification(
+                token,
+                "⏰ Session starting soon!",
+                "Your session with ${session.learner?.name} starts in ~5 minutes!",
+                data
+            )
+        }
+        session.learner?.fcmToken?.let { token ->
+            pushNotificationService.sendNotification(
+                token,
+                "⏰ Session starting soon!",
+                "Your session with ${session.teacher?.name} starts in ~5 minutes!",
+                data
+            )
+        }
+    }
+
 }

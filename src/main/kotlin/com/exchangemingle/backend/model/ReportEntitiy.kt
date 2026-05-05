@@ -20,7 +20,7 @@ class Report(
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "session_id")
-    var session: com.exchangemingle.backend.model.Session? = null,
+    var session: Session? = null,
 
     @Column(nullable = false, length = 50)
     @Enumerated(EnumType.STRING)

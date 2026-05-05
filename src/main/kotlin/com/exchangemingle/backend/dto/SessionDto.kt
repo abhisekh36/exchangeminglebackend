@@ -12,7 +12,7 @@ data class CreateSessionRequest(
     val skillId: Long,
 
     @field:NotNull(message = "Duration is required")
-    @field:Min(value = 15, message = "Duration must be at least 15 minutes")
+    @field:Min(value = 30, message = "Minimum session duration is 30 minutes")
     @field:Max(value = 180, message = "Duration cannot exceed 180 minutes")
     val durationMinutes: Int,
 
