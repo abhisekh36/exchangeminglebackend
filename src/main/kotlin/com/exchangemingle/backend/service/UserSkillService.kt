@@ -4,6 +4,7 @@ import com.exchangemingle.backend.dto.*
 import com.exchangemingle.backend.exception.*
 import com.exchangemingle.backend.model.*
 import com.exchangemingle.backend.repository.*
+import org.springframework.cache.annotation.CacheEvict
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
@@ -18,6 +19,7 @@ class UserSkillService(
 ) {
 
     @Transactional
+    @CacheEvict(value = ["discovery-teachers"], allEntries = true, cacheManager = "redisCacheManager")
     fun addUserSkill(userId: Long, request: AddUserSkillRequest): UserSkillResponse {
         val user = userRepository.findById(userId)
             .orElseThrow { UserNotFoundException("User not found") }

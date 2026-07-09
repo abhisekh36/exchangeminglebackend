@@ -51,8 +51,17 @@ class CacheConfig {
             )
             .disableCachingNullValues()
 
+        val perCacheTtl = mapOf(
+            "discovery-teachers"  to Duration.ofMinutes(5),
+            "discovery-requests"  to Duration.ofMinutes(2),
+            "open-requests-feed"  to Duration.ofMinutes(2)
+        )
+
         return RedisCacheManager.builder(connectionFactory)
             .cacheDefaults(config)
+            .withInitialCacheConfigurations(
+                perCacheTtl.mapValues { (_, ttl) -> config.entryTtl(ttl) }
+            )
             .transactionAware()
             .build()
     }

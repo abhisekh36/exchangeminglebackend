@@ -17,6 +17,8 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 
+import org.springframework.cache.annotation.CacheEvict
+
 @Service
 class SessionRequestService(
     private val sessionRequestRepository: SessionRequestRepository,
@@ -29,6 +31,7 @@ class SessionRequestService(
     private val logger = LoggerFactory.getLogger(SessionRequestService::class.java)
 
     @Transactional
+    @CacheEvict(value = ["discovery-requests", "open-requests-feed"], allEntries = true, cacheManager = "redisCacheManager")
     fun createRequest(learnerId: Long, dto: CreateSessionRequestDto): SessionRequestResponse {
         val learner = userRepository.findById(learnerId)
             .orElseThrow { UserNotFoundException("User not found: $learnerId") }
@@ -36,13 +39,8 @@ class SessionRequestService(
         val skill = skillRepository.findById(dto.skillId)
             .orElseThrow { SkillNotFoundException("Skill not found: ${dto.skillId}") }
 
-        // Just check learner has enough credits to eventually book - don't hold yet
-        val creditsNeeded = dto.durationMinutes * 0.1
-        if (learner.credits < creditsNeeded) {
-            throw InsufficientCreditsException(
-                "Need at least $creditsNeeded credits to post this request. You have ${learner.credits}."
-            )
-        }
+        // NOTE: No credit check here. Credits are only deducted when a teacher
+        // actually books a session. Posting a public request is free.
 
         val request = SessionRequest(
             learner = learner,

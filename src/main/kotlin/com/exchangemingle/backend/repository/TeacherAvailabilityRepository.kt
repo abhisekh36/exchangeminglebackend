@@ -40,4 +40,16 @@ interface TeacherAvailabilityRepository : JpaRepository<TeacherAvailability, Lon
         ORDER BY ta.slotStart ASC
     """)
     fun findAllAvailable(@Param("now") now: LocalDateTime): List<TeacherAvailability>
+    /** Find slots for a teacher that overlap the given time range (for conflict detection) */
+    @Query("""
+        SELECT ta FROM TeacherAvailability ta
+        WHERE ta.teacher = :teacher
+        AND ta.slotStart < :slotEnd
+        AND ta.slotEnd > :slotStart
+    """)
+    fun findOverlappingSlots(
+        @Param("teacher") teacher: User,
+        @Param("slotStart") slotStart: LocalDateTime,
+        @Param("slotEnd") slotEnd: LocalDateTime
+    ): List<TeacherAvailability>
 }

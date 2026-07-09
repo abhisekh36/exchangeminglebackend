@@ -9,6 +9,8 @@ import com.exchangemingle.backend.repository.SessionRepository
 import com.exchangemingle.backend.repository.SkillRepository
 import com.exchangemingle.backend.repository.UserRepository
 import com.exchangemingle.backend.repository.UserSkillRepository
+import org.springframework.cache.annotation.CacheEvict
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
@@ -24,6 +26,7 @@ class DiscoveryService(
     private val userSkillService: UserSkillService
 ) {
 
+    @Cacheable(value = ["discovery-teachers"], key = "#skillId + ':' + #page + ':' + #size", cacheManager = "redisCacheManager")
     fun findTeachers(skillId: Long? = null, page: Int = 0, size: Int = 20): PagedTeacherCardResponse {
         // Use UserSkill as source of truth: any active TEACHER skill = discoverable
         val teacherUserSkills = if (skillId != null) {
@@ -88,6 +91,7 @@ class DiscoveryService(
         )
     }
 
+    @Cacheable(value = ["discovery-requests"], key = "#skillId + ':' + #page + ':' + #size", cacheManager = "redisCacheManager")
     fun findOpenRequests(skillId: Long? = null, page: Int = 0, size: Int = 20): PagedOpenRequestResponse {
         val pageable = PageRequest.of(page, size, Sort.by("createdAt").descending())
 

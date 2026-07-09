@@ -9,6 +9,7 @@ import com.exchangemingle.backend.exception.UserNotFoundException
 import com.exchangemingle.backend.model.TeacherAvailability
 import com.exchangemingle.backend.repository.TeacherAvailabilityRepository
 import com.exchangemingle.backend.repository.UserRepository
+import org.springframework.cache.annotation.CacheEvict
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -21,6 +22,7 @@ class TeacherAvailabilityService(
 ) {
 
     @Transactional
+    @CacheEvict(value = ["discovery-teachers"], allEntries = true, cacheManager = "redisCacheManager")
     fun addSlot(teacherId: Long, request: CreateAvailabilityRequest): AvailabilitySlotResponse {
         val teacher = userRepository.findById(teacherId)
             .orElseThrow { UserNotFoundException("Teacher not found: $teacherId") }
@@ -34,6 +36,19 @@ class TeacherAvailabilityService(
         val durationMinutes = java.time.Duration.between(request.slotStart, request.slotEnd).toMinutes()
         if (durationMinutes < 15 || durationMinutes > 180) {
             throw InvalidRequestException("Slot duration must be between 15 and 180 minutes")
+        }
+
+        // ── Overlap check: teacher cannot publish two overlapping slots ──────
+        val overlapping = availabilityRepository.findOverlappingSlots(
+            teacher, request.slotStart, request.slotEnd
+        )
+        if (overlapping.isNotEmpty()) {
+            val existing = overlapping.first()
+            val fmt = java.time.format.DateTimeFormatter.ofPattern("h:mm a")
+            throw InvalidRequestException(
+                "You already have a slot from ${existing.slotStart.format(fmt)} to ${existing.slotEnd.format(fmt)} " +
+                        "on that day. Please choose a different time."
+            )
         }
 
         val slot = TeacherAvailability(

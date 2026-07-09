@@ -6,7 +6,9 @@ import com.exchangemingle.backend.model.Session
 import com.exchangemingle.backend.model.SessionStatus
 import com.exchangemingle.backend.model.UserStatus
 import com.exchangemingle.backend.repository.SessionRepository
+import com.exchangemingle.backend.model.SkillRole
 import com.exchangemingle.backend.repository.SkillRepository
+import com.exchangemingle.backend.repository.UserSkillRepository
 import com.exchangemingle.backend.repository.UserRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
@@ -21,13 +23,14 @@ class SessionService(
     private val sessionRepository: SessionRepository,
     private val userRepository: UserRepository,
     private val skillRepository: SkillRepository,
+    private val userSkillRepository: UserSkillRepository,
     private val pushNotificationService: PushNotificationService,
     private val userSkillService: UserSkillService,
-    private val teacherAvailabilityService: TeacherAvailabilityService  // ADDED
+    private val teacherAvailabilityService: TeacherAvailabilityService
 ) {
 
     companion object {
-        private const val CREDITS_PER_MINUTE = 0.1
+        private const val DEFAULT_CREDITS_PER_MINUTE = 0.1  // fallback if teacher has no rate set
     }
 
     @Transactional
@@ -63,7 +66,16 @@ class SessionService(
             throw InvalidSessionOperationException("Your account has been banned")
         }
 
-        val creditsNeeded = request.durationMinutes * CREDITS_PER_MINUTE
+        // Look up the teacher's rate for this skill; fall back to default if not set
+        val teacherSkill = userSkillRepository
+            .findByUserAndSkillAndRole(teacher, skill, SkillRole.TEACHER)
+            .orElse(null)
+        val creditsPerMinute = if (teacherSkill?.hourlyCredits != null && teacherSkill.hourlyCredits!! > 0)
+            teacherSkill.hourlyCredits!! / 60.0
+        else
+            DEFAULT_CREDITS_PER_MINUTE
+
+        val creditsNeeded = request.durationMinutes * creditsPerMinute
 
         if (learner.credits < creditsNeeded) {
             throw InsufficientCreditsException(
