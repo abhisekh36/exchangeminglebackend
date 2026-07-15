@@ -1,0 +1,18 @@
+name: Keep Render backend warm
+on:
+  schedule:
+    # Runs every 10 minutes, but only between 08:00–23:00 IST (02:30–17:30 UTC).
+    # Split into 3 cron lines to hit the exact half-hour boundaries.
+    - cron: '30,40,50 2 * * *'    # 08:00–08:50 IST
+    - cron: '*/10 3-16 * * *'     # 09:00–22:50 IST
+    - cron: '0,10,20,30 17 * * *' # 23:00 IST (last ping)
+  workflow_dispatch: {} # lets you manually trigger a ping from the Actions tab to test it
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          curl -sS -o /dev/null -w "Status: %{http_code}\n" \
+            https://exchangeminglebackend.onrender.com/actuator/health \
+            --max-time 30 || echo "Ping failed (backend may have been cold — that's OK, this run woke it up)"
