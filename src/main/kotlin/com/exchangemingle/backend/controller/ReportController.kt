@@ -32,16 +32,22 @@ class ReportController(
     }
 
     @GetMapping("/{id}")
-    fun getReportById(@PathVariable id: Long): ResponseEntity<ReportResponse> {
+    fun getReportById(
+        @PathVariable id: Long,
+        @RequestHeader("Authorization") authHeader: String
+    ): ResponseEntity<ReportResponse> {
+        requireAdmin(authHeader)
         return ResponseEntity.ok(reportService.getReportById(id))
     }
 
     @GetMapping
     fun getAllReports(
+        @RequestHeader("Authorization") authHeader: String,
         @RequestParam(required = false) status: ReportStatus?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int
     ): ResponseEntity<PagedReportResponse> {
+        requireAdmin(authHeader)
         return ResponseEntity.ok(reportService.getAllReports(page, size, status))
     }
 
@@ -64,12 +70,18 @@ class ReportController(
         @RequestHeader("Authorization") authHeader: String,
         @Valid @RequestBody request: UpdateReportStatusRequest
     ): ResponseEntity<ReportResponse> {
+        val admin = requireAdmin(authHeader)
+        return ResponseEntity.ok(reportService.updateReportStatus(id, admin.id, request))
+    }
+
+    private fun requireAdmin(authHeader: String): com.exchangemingle.backend.model.User {
         val token = authHeader.substring(7)
         val email = jwtService.extractUsername(token)
-        val admin = userService.findByEmail(email)
+        val user = userService.findByEmail(email)
 
-        // TODO: Add admin role check
-
-        return ResponseEntity.ok(reportService.updateReportStatus(id, admin.id, request))
+        if (!user.isAdmin) {
+            throw com.exchangemingle.backend.exception.AdminAccessRequiredException()
+        }
+        return user
     }
 }

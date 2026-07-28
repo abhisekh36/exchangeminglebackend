@@ -69,7 +69,10 @@ class User(
     var googleId: String? = null,
 
     @Column(nullable = false)
-    var needsNameSetup: Boolean = false
+    var needsNameSetup: Boolean = false,
+
+    @Column(nullable = false)
+    var isAdmin: Boolean = false
 
 ) {
     @PrePersist

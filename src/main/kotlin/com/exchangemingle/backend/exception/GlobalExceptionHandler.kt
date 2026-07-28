@@ -162,6 +162,13 @@ class GlobalExceptionHandler {
         )
     }
 
+    @ExceptionHandler(AdminAccessRequiredException::class)
+    fun handleAdminAccessRequired(ex: AdminAccessRequiredException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+            ErrorResponse(status = HttpStatus.FORBIDDEN.value(), error = "Admin Access Required", message = ex.message ?: "Admin access required")
+        )
+    }
+
     // ===== ADDED: InvalidRequestException Handler =====
     @ExceptionHandler(InvalidRequestException::class)
     fun handleInvalidRequest(ex: InvalidRequestException): ResponseEntity<ErrorResponse> {

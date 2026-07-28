@@ -12,7 +12,8 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class AccountManagementService(
     private val userRepository: UserRepository,
-    private val passwordEncoder: PasswordEncoder
+    private val passwordEncoder: PasswordEncoder,
+    private val emailVerificationService: EmailVerificationService
 ) {
 
     @Transactional
@@ -65,7 +66,6 @@ class AccountManagementService(
             throw InvalidRequestException("Email is already verified")
         }
 
-        // TODO: Send verification email
-        // This would integrate with your email service
+        emailVerificationService.createVerificationToken(user)
     }
 }

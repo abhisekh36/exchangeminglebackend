@@ -19,3 +19,4 @@ class InvalidPasswordException(message: String = "Current password is incorrect"
 class SessionRequestNotFoundException(message: String = "Session request not found") : RuntimeException(message)
 class AchievementNotFoundException(message: String = "Achievement not found") : RuntimeException(message)
 class NotificationNotFoundException(message: String = "Notification not found") : RuntimeException(message)
+class AdminAccessRequiredException(message: String = "Admin access required") : RuntimeException(message)
