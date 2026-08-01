@@ -237,4 +237,18 @@ interface SessionRepository : JpaRepository<Session, Long> {
         AND s.createdAt <= :cutoff
     """)
     fun findExpiredPendingSessions(@Param("cutoff") cutoff: LocalDateTime): List<Session>
+
+    // CONFIRMED sessions whose scheduledAt is before the window end and neither party
+    // ever joined. Precise end-of-session filtering (scheduledAt + durationMinutes)
+    // happens in Kotlin, same pattern as the booking conflict check above — this keeps
+    // the query portable instead of relying on a DB-specific date-math function.
+    @Query("""
+        SELECT s FROM Session s
+        LEFT JOIN FETCH s.teacher
+        LEFT JOIN FETCH s.learner
+        WHERE s.status = 'CONFIRMED'
+        AND s.actualStartTime IS NULL
+        AND s.scheduledAt <= :windowEnd
+    """)
+    fun findUnjoinedConfirmedSessionsBefore(@Param("windowEnd") windowEnd: LocalDateTime): List<Session>
 }

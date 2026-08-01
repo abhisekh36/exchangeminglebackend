@@ -632,6 +632,55 @@ class SessionService(
         }
     }
 
+    /**
+     * Runs every 5 minutes. Catches CONFIRMED sessions that neither party ever
+     * joined (so they never became IN_PROGRESS and handleNoShows() never saw them).
+     * Once a session's scheduled window is fully over with a grace period, mark it
+     * BOTH_NO_SHOW and fully refund the learner — otherwise it sits there forever
+     * still showing a "Join Video Call" button long after the date has passed.
+     */
+    @Scheduled(fixedRate = 300_000)
+    fun expireUnjoinedConfirmedSessions() {
+        try { expireUnjoinedConfirmedSessionsInternal() } catch (e: Exception) { println("expireUnjoinedConfirmedSessions error: ${e.message}") }
+    }
+
+    @Transactional
+    fun expireUnjoinedConfirmedSessionsInternal() {
+        val now = LocalDateTime.now()
+        val graceMinutes = 15L
+        // Query broadly (scheduledAt in the past), then filter precisely using each
+        // session's own duration + grace period, same style as the conflict check above.
+        val candidates = sessionRepository.findUnjoinedConfirmedSessionsBefore(now)
+        for (session in candidates) {
+            val scheduledEnd = session.scheduledAt!!.plusMinutes(session.durationMinutes.toLong())
+            if (now.isBefore(scheduledEnd.plusMinutes(graceMinutes))) continue
+
+            session.status = SessionStatus.BOTH_NO_SHOW
+            session.learner?.let { learner ->
+                learner.heldCredits -= session.creditsHeld
+                learner.credits += session.creditsHeld  // full refund — nobody showed up
+                userRepository.save(learner)
+            }
+            sessionRepository.save(session)
+            session.teacher?.fcmToken?.let { token ->
+                pushNotificationService.sendNotification(
+                    deviceToken = token,
+                    title = "Session expired",
+                    body  = "Neither of you joined in time, so this session was closed automatically.",
+                    data  = mapOf("type" to "BOTH_NO_SHOW", "sessionId" to session.id.toString())
+                )
+            }
+            session.learner?.fcmToken?.let { token ->
+                pushNotificationService.sendNotification(
+                    deviceToken = token,
+                    title = "Session expired — refunded",
+                    body  = "Neither of you joined in time. Your credits have been refunded.",
+                    data  = mapOf("type" to "BOTH_NO_SHOW", "sessionId" to session.id.toString())
+                )
+            }
+        }
+    }
+
     private fun mapToSessionResponse(session: Session): SessionResponse {
         val start = session.scheduledAt ?: LocalDateTime.now().plusDays(1)
         val end   = start.plusMinutes(session.durationMinutes.toLong())

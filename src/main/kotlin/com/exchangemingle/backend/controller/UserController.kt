@@ -25,10 +25,11 @@ class UserController(
         return ResponseEntity.ok(userService.getUserById(user.id))
     }
 
-    @GetMapping("/{id}")
-    fun getUserById(@PathVariable id: Long): ResponseEntity<UserResponse> {
-        return ResponseEntity.ok(userService.getUserById(id))
-    }
+    // NOTE: a GET /{id} endpoint returning the full UserResponse (including email)
+    // used to live here. It was never called anywhere in the frontend and let any
+    // authenticated user enumerate other users' email addresses by ID. Removed —
+    // use /{id}/teacher-profile or /{id}/learner-profile for public-safe lookups,
+    // and /me for the caller's own full profile.
 
     /**
      * Full public teacher profile — includes all teaching skills, availability slots,

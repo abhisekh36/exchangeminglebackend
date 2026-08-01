@@ -17,7 +17,6 @@ class FileStorageService(
 
     companion object {
         private const val MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
-        private val ALLOWED_IMAGE_TYPES = setOf("image/jpeg", "image/png", "image/jpg", "image/webp")
         private const val AVATAR_FOLDER = "avatars"
     }
 
@@ -98,10 +97,17 @@ class FileStorageService(
             throw IllegalArgumentException("File size exceeds maximum limit of 5MB")
         }
 
-        // Check file type
+        // Check file type. Previously this matched against a narrow hardcoded
+        // set (jpeg/png/jpg/webp only), which silently rejected HEIC/HEIF —
+        // the default photo format on most modern phone cameras — as well as
+        // any file whose content-type the client didn't set at all. Cloudinary
+        // already auto-detects and converts the real format on upload
+        // (fetch_format: auto below), so here we only need to rule out
+        // obviously non-image uploads; a missing content-type is tolerated
+        // rather than rejected outright.
         val contentType = file.contentType
-        if (contentType !in ALLOWED_IMAGE_TYPES) {
-            throw IllegalArgumentException("Invalid file type. Only JPEG, PNG, and WebP images are allowed")
+        if (contentType != null && !contentType.startsWith("image/")) {
+            throw IllegalArgumentException("Invalid file type. Only image files are allowed")
         }
     }
 

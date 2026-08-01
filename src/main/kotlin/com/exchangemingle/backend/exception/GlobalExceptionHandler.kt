@@ -181,6 +181,17 @@ class GlobalExceptionHandler {
         )
     }
 
+    // Without this, any validation failure (empty file, oversized file, wrong
+    // file type — e.g. FileStorageService.validateFile) fell through to the
+    // generic Exception handler below and came back as a scary, uninformative
+    // "Upload failed (500)" instead of a proper 400 with the real reason.
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.badRequest().body(
+            ErrorResponse(status = HttpStatus.BAD_REQUEST.value(), error = "Invalid Request", message = ex.message ?: "Invalid request")
+        )
+    }
+
     @ExceptionHandler(Exception::class)
     fun handleGenericException(ex: Exception): ResponseEntity<ErrorResponse> {
         logger.error("Unhandled exception: ${ex.javaClass.name} - ${ex.message}", ex)
