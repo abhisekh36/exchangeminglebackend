@@ -1,6 +1,7 @@
 package com.exchangemingle.backend.service
 
 import com.cloudinary.Cloudinary
+import com.cloudinary.Transformation
 import com.cloudinary.utils.ObjectUtils
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -32,6 +33,20 @@ class FileStorageService(
             // Generate unique filename
             val publicId = "$AVATAR_FOLDER/${UUID.randomUUID()}"
 
+            // The Cloudinary JAVA SDK (unlike its Node/PHP/Ruby siblings) requires
+            // the "transformation" upload param to be either a String or an actual
+            // com.cloudinary.Transformation object — passing a raw Map (or an array
+            // of Maps) is not a supported "transformation component" and throws
+            // "Invalid transformation component - ..." every single time, which is
+            // exactly the crash we were hitting. Build a real Transformation object.
+            val avatarTransformation = Transformation<Transformation<*>>()
+                .width(400)
+                .height(400)
+                .crop("fill")
+                .gravity("face")
+                .quality("auto:good")
+                .fetchFormat("auto")
+
             // Upload to Cloudinary with transformations
             val uploadResult = cloudinary.uploader().upload(
                 file.bytes,
@@ -39,14 +54,7 @@ class FileStorageService(
                     "public_id", publicId,
                     "folder", AVATAR_FOLDER,
                     "resource_type", "image",
-                    "transformation", ObjectUtils.asMap(
-                        "width", 400,
-                        "height", 400,
-                        "crop", "fill",
-                        "gravity", "face",
-                        "quality", "auto:good",
-                        "fetch_format", "auto"
-                    )
+                    "transformation", avatarTransformation
                 )
             )
 
