@@ -13,6 +13,29 @@ import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer
 import org.springframework.data.redis.serializer.StringRedisSerializer
 import java.time.Duration
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.KotlinModule
+
+/**
+ * Shared ObjectMapper for anything stored in Redis (cache values, RedisTemplate).
+ *
+ * GenericJackson2JsonRedisSerializer's no-arg constructor builds its OWN internal
+ * ObjectMapper that is completely separate from Spring Boot's auto-configured one —
+ * it does NOT pick up the Kotlin module or JavaTimeModule automatically. Kotlin data
+ * classes (TeacherCard, OpenRequestCard, ...) have no default no-arg constructor, so
+ * without the Kotlin module Jackson can still SERIALIZE them (via getters) but throws
+ * "Cannot construct instance of ... (no Creators, like default constructor, exist)"
+ * the moment it tries to DESERIALIZE one back out of Redis. That's exactly why a
+ * cache MISS (fresh DB query, no deserialization involved) works fine, while the very
+ * next request within the cache's TTL (a cache HIT, which does deserialize) 500s.
+ */
+fun buildRedisObjectMapper(): ObjectMapper =
+    ObjectMapper()
+        .registerModule(KotlinModule.Builder().build())
+        .registerModule(JavaTimeModule())
+        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
 @Configuration
 class RedisConfig {
@@ -61,9 +84,9 @@ class RedisConfig {
         val template = RedisTemplate<String, Any>()
         template.connectionFactory = connectionFactory
         template.keySerializer = StringRedisSerializer()
-        template.valueSerializer = GenericJackson2JsonRedisSerializer()
+        template.valueSerializer = GenericJackson2JsonRedisSerializer(buildRedisObjectMapper())
         template.hashKeySerializer = StringRedisSerializer()
-        template.hashValueSerializer = GenericJackson2JsonRedisSerializer()
+        template.hashValueSerializer = GenericJackson2JsonRedisSerializer(buildRedisObjectMapper())
         return template
     }
 }

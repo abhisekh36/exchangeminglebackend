@@ -39,15 +39,13 @@ class FileStorageService(
                     "public_id", publicId,
                     "folder", AVATAR_FOLDER,
                     "resource_type", "image",
-                    "transformation", arrayOf(
-                        ObjectUtils.asMap(
-                            "width", 400,
-                            "height", 400,
-                            "crop", "fill",
-                            "gravity", "face",
-                            "quality", "auto:good",
-                            "fetch_format", "auto"
-                        )
+                    "transformation", ObjectUtils.asMap(
+                        "width", 400,
+                        "height", 400,
+                        "crop", "fill",
+                        "gravity", "face",
+                        "quality", "auto:good",
+                        "fetch_format", "auto"
                     )
                 )
             )
@@ -66,6 +64,14 @@ class FileStorageService(
      * Delete avatar from Cloudinary
      */
     fun deleteAvatar(imageUrl: String): Boolean {
+        if (!imageUrl.contains("cloudinary.com")) {
+            // Not a Cloudinary-hosted image (e.g. a Google OAuth profile photo
+            // URL) — nothing for us to delete there, and attempting to extract
+            // a Cloudinary public_id from it would only produce a false-alarm
+            // warning every time a user with a Google avatar uploads a new one.
+            logger.info("Skipping delete: avatar is not Cloudinary-hosted ($imageUrl)")
+            return true
+        }
         return try {
             // Extract public_id from URL
             val publicId = extractPublicIdFromUrl(imageUrl)

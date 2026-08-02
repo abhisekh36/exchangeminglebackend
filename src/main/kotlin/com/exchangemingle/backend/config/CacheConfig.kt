@@ -46,7 +46,7 @@ class CacheConfig {
             .entryTtl(Duration.ofMinutes(30))
             .serializeValuesWith(
                 RedisSerializationContext.SerializationPair.fromSerializer(
-                    GenericJackson2JsonRedisSerializer()
+                    GenericJackson2JsonRedisSerializer(buildRedisObjectMapper())
                 )
             )
             .disableCachingNullValues()
