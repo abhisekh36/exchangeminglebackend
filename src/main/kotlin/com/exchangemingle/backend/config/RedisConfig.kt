@@ -13,29 +13,59 @@ import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer
 import org.springframework.data.redis.serializer.StringRedisSerializer
 import java.time.Duration
+import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 
 /**
  * Shared ObjectMapper for anything stored in Redis (cache values, RedisTemplate).
  *
- * GenericJackson2JsonRedisSerializer's no-arg constructor builds its OWN internal
- * ObjectMapper that is completely separate from Spring Boot's auto-configured one —
- * it does NOT pick up the Kotlin module or JavaTimeModule automatically. Kotlin data
- * classes (TeacherCard, OpenRequestCard, ...) have no default no-arg constructor, so
- * without the Kotlin module Jackson can still SERIALIZE them (via getters) but throws
- * "Cannot construct instance of ... (no Creators, like default constructor, exist)"
- * the moment it tries to DESERIALIZE one back out of Redis. That's exactly why a
- * cache MISS (fresh DB query, no deserialization involved) works fine, while the very
- * next request within the cache's TTL (a cache HIT, which does deserialize) 500s.
+ * Two separate problems had to be fixed here, both stemming from the same root
+ * cause: GenericJackson2JsonRedisSerializer's no-arg constructor builds its OWN
+ * internal ObjectMapper, completely separate from Spring Boot's auto-configured
+ * one, and that internal mapper is configured in ways a hand-built one isn't
+ * unless you replicate them:
+ *
+ * 1. Kotlin module — Kotlin data classes (TeacherCard, OpenRequestCard, ...) have
+ *    no default no-arg constructor. Without jackson-module-kotlin registered,
+ *    Jackson can still SERIALIZE them (via getters) but throws
+ *    "Cannot construct instance of ... (no Creators, like default constructor,
+ *    exist)" the moment it DESERIALIZES one back out of Redis.
+ *
+ * 2. Default typing — the no-arg constructor also calls activateDefaultTyping(),
+ *    which embeds an "@class" field in the cached JSON recording the concrete
+ *    type. Without it, Jackson has no idea what type to build on the way back
+ *    out and falls back to a generic LinkedHashMap — which is exactly what
+ *    Spring's @Cacheable proxy then fails to unchecked-cast back to
+ *    PagedTeacherCardResponse (ClassCastException: LinkedHashMap cannot be
+ *    cast to PagedTeacherCardResponse).
+ *
+ * Fixing only #1 (as done previously) stops the crash on construction but still
+ * leaves deserialization producing the wrong type, since there's still no type
+ * metadata in the cached JSON to tell Jackson to build a PagedTeacherCardResponse
+ * instead of a plain Map. Both are required together.
  */
-fun buildRedisObjectMapper(): ObjectMapper =
-    ObjectMapper()
+fun buildRedisObjectMapper(): ObjectMapper {
+    val mapper = ObjectMapper()
         .registerModule(KotlinModule.Builder().build())
         .registerModule(JavaTimeModule())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+
+    // Only our own service ever writes to this cache (it's not fed by any
+    // external/untrusted input), so validating against Any is safe here —
+    // this mirrors what GenericJackson2JsonRedisSerializer's own no-arg
+    // constructor does internally by default.
+    val typeValidator = BasicPolymorphicTypeValidator.builder()
+        .allowIfBaseType(Any::class.java)
+        .build()
+
+    mapper.activateDefaultTyping(typeValidator, ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY)
+
+    return mapper
+}
 
 @Configuration
 class RedisConfig {
