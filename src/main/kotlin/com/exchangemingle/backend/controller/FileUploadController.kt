@@ -56,9 +56,8 @@ class FileUploadController(
 
         user.avatar?.let { avatarUrl ->
             fileStorageService.deleteAvatar(avatarUrl)
-            user.avatar = null
-            userService.updateProfile(user.id, com.exchangemingle.backend.dto.UpdateProfileRequest(avatar = null))
         }
+        userService.clearAvatar(user.id)
 
         return ResponseEntity.ok(MessageResponse("Avatar deleted successfully"))
     }

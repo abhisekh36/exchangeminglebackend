@@ -23,7 +23,8 @@ class DiscoveryService(
     private val skillRepository: SkillRepository,
     private val sessionRequestRepository: SessionRequestRepository,
     private val userSkillRepository: UserSkillRepository,
-    private val userSkillService: UserSkillService
+    private val userSkillService: UserSkillService,
+    private val teacherAvailabilityRepository: com.exchangemingle.backend.repository.TeacherAvailabilityRepository
 ) {
 
     @Cacheable(value = ["discovery-teachers"], key = "#skillId + ':' + #page + ':' + #size", cacheManager = "redisCacheManager")
@@ -63,6 +64,9 @@ class DiscoveryService(
             val recentSessions = sessionRepository.countRecentCompletedByTeacher(teacher, LocalDateTime.now().minusDays(30))
             val recencyScore   = (if (recentSessions > 0) 1.0 else 0.0) * 0.20
             val totalScore     = ratingScore + experienceScore + recencyScore + profileScore
+            val isAvailable    = teacherAvailabilityRepository
+                .findAvailableByTeacher(teacher, LocalDateTime.now())
+                .isNotEmpty()
 
             TeacherCard(
                 id = teacher.id,
@@ -74,7 +78,8 @@ class DiscoveryService(
                 bio = teacher.bio,
                 skillName = skillName,
                 hourlyCredits = hourlyCredits,
-                skillId = skillId
+                skillId = skillId,
+                isAvailable = isAvailable
             )
         }.sortedByDescending { it.score }
 

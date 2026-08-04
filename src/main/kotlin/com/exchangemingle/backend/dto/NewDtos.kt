@@ -59,7 +59,10 @@ data class TeacherCard(
     val bio: String? = null,
     val skillName: String? = null,
     val hourlyCredits: Double? = null,
-    val skillId: Long? = null
+    val skillId: Long? = null,
+    // True only when this teacher has at least one real, unbooked, future
+    // TeacherAvailability slot posted — never a guess or a placeholder.
+    val isAvailable: Boolean = false
 )
 
 data class PagedTeacherCardResponse(
@@ -270,7 +273,10 @@ data class UserSearchResult(
     val averageRating: Double?,
     val totalSessionsAsTeacher: Long,
     val totalSessionsAsLearner: Long,
-    val isBlocked: Boolean = false
+    val isBlocked: Boolean = false,
+    // True only when this user has at least one real, unbooked, future
+    // TeacherAvailability slot — not a guess or a random badge.
+    val isAvailable: Boolean = false
 )
 
 data class SessionSearchRequest(

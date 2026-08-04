@@ -16,7 +16,8 @@ class SearchService(
     private val userRepository: UserRepository,
     private val skillRepository: SkillRepository,
     private val sessionRepository: SessionRepository,
-    private val blockedUserRepository: BlockedUserRepository
+    private val blockedUserRepository: BlockedUserRepository,
+    private val teacherAvailabilityRepository: TeacherAvailabilityRepository
 ) {
 
     @Transactional(readOnly = true)
@@ -79,6 +80,10 @@ class SearchService(
                         )
                     }
 
+                val isAvailable = teacherAvailabilityRepository
+                    .findAvailableByTeacher(user, java.time.LocalDateTime.now())
+                    .isNotEmpty()
+
                 UserSearchResult(
                     id = user.id,
                     name = user.name,
@@ -92,7 +97,8 @@ class SearchService(
                     averageRating = sessionRepository.getAverageRatingForTeacher(user),
                     totalSessionsAsTeacher = sessionRepository.countByTeacher(user),
                     totalSessionsAsLearner = sessionRepository.countByLearner(user),
-                    isBlocked = isBlocked
+                    isBlocked = isBlocked,
+                    isAvailable = isAvailable
                 )
             }
             .filter { !request.excludeBlocked || !it.isBlocked }

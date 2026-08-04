@@ -103,6 +103,19 @@ class UserService(
         return mapToUserResponse(updatedUser)
     }
 
+    // updateProfile's `request.avatar?.let { ... }` treats a null avatar as "leave
+    // unchanged" (that's what lets name-only or bio-only updates work), so it can
+    // never be used to actually clear the column. This is the dedicated path for that.
+    @CacheEvict(value = ["users", "user-profiles"], key = "#userId")
+    @Transactional
+    fun clearAvatar(userId: Long): UserResponse {
+        val user = userRepository.findById(userId)
+            .orElseThrow { UserNotFoundException("User not found with id: $userId") }
+        user.avatar = null
+        val updatedUser = userRepository.save(user)
+        return mapToUserResponse(updatedUser)
+    }
+
     @Transactional
     fun changePassword(userId: Long, request: ChangePasswordRequest) {
         if (request.newPassword != request.confirmPassword) {
