@@ -14,6 +14,7 @@ import org.springframework.cache.annotation.Cacheable
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 
 @Service
@@ -97,6 +98,11 @@ class DiscoveryService(
     }
 
     @Cacheable(value = ["discovery-requests"], key = "#skillId + ':' + #page + ':' + #size", cacheManager = "redisCacheManager")
+    // readOnly = true is a safety net, not the actual fix — the JOIN FETCH queries
+    // in SessionRequestRepository already load everything needed in one shot, but
+    // keeping this transactional protects against any future field added here
+    // that touches another lazy association (open-in-view is disabled project-wide).
+    @Transactional(readOnly = true)
     fun findOpenRequests(skillId: Long? = null, page: Int = 0, size: Int = 20): PagedOpenRequestResponse {
         val pageable = PageRequest.of(page, size, Sort.by("createdAt").descending())
 

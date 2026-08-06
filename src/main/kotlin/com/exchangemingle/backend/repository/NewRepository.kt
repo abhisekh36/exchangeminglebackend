@@ -13,14 +13,26 @@ import java.time.LocalDateTime
 @Repository
 interface SessionRequestRepository : JpaRepository<SessionRequest, Long> {
 
-    fun findByStatus(status: SessionRequestStatus, pageable: Pageable): Page<SessionRequest>
+    @Query(
+        value    = "SELECT sr FROM SessionRequest sr JOIN FETCH sr.learner JOIN FETCH sr.skill LEFT JOIN FETCH sr.acceptedBy WHERE sr.status = :status",
+        countQuery = "SELECT COUNT(sr) FROM SessionRequest sr WHERE sr.status = :status"
+    )
+    fun findByStatus(@Param("status") status: SessionRequestStatus, pageable: Pageable): Page<SessionRequest>
 
-    fun findByLearner(learner: User, pageable: Pageable): Page<SessionRequest>
+    @Query(
+        value    = "SELECT sr FROM SessionRequest sr JOIN FETCH sr.learner JOIN FETCH sr.skill LEFT JOIN FETCH sr.acceptedBy WHERE sr.learner = :learner",
+        countQuery = "SELECT COUNT(sr) FROM SessionRequest sr WHERE sr.learner = :learner"
+    )
+    fun findByLearner(@Param("learner") learner: User, pageable: Pageable): Page<SessionRequest>
 
-    @Query("SELECT sr FROM SessionRequest sr WHERE sr.status = 'OPEN' AND sr.skill.id = :skillId")
+    @Query("SELECT sr FROM SessionRequest sr JOIN FETCH sr.learner JOIN FETCH sr.skill WHERE sr.status = 'OPEN' AND sr.skill.id = :skillId")
     fun findOpenBySkillId(@Param("skillId") skillId: Long, pageable: Pageable): Page<SessionRequest>
 
-    fun findByStatusAndSkill(status: SessionRequestStatus, skill: Skill, pageable: Pageable): Page<SessionRequest>
+    @Query(
+        value    = "SELECT sr FROM SessionRequest sr JOIN FETCH sr.learner JOIN FETCH sr.skill LEFT JOIN FETCH sr.acceptedBy WHERE sr.status = :status AND sr.skill = :skill",
+        countQuery = "SELECT COUNT(sr) FROM SessionRequest sr WHERE sr.status = :status AND sr.skill = :skill"
+    )
+    fun findByStatusAndSkill(@Param("status") status: SessionRequestStatus, @Param("skill") skill: Skill, pageable: Pageable): Page<SessionRequest>
 
     @Modifying
     @Query("""

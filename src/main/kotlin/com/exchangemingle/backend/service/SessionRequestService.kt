@@ -122,6 +122,9 @@ class SessionRequestService(
         return mapToResponse(updated)
     }
 
+    // Same safety net as DiscoveryService.findOpenRequests — the JOIN FETCH query
+    // in findByLearner is the actual fix, this just guards future field additions.
+    @Transactional(readOnly = true)
     fun getMyRequests(userId: Long, page: Int = 0, size: Int = 20): PagedSessionRequestResponse {
         val user = userRepository.findById(userId)
             .orElseThrow { UserNotFoundException("User not found: $userId") }
