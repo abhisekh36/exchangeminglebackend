@@ -27,20 +27,27 @@ class TeacherAvailabilityService(
         val teacher = userRepository.findById(teacherId)
             .orElseThrow { UserNotFoundException("Teacher not found: $teacherId") }
 
-        if (request.slotStart.isBefore(LocalDateTime.now())) {
+        // request.slotStart/slotEnd are Instants (true UTC instants). Everywhere
+        // else in this service/entity treats LocalDateTime as "UTC wall-clock
+        // digits" (see mapToResponse below, and getAvailabilitySummaryForTeacher),
+        // so we convert here once, at the boundary, to stay consistent with that.
+        val slotStart = LocalDateTime.ofInstant(request.slotStart, ZoneOffset.UTC)
+        val slotEnd = LocalDateTime.ofInstant(request.slotEnd, ZoneOffset.UTC)
+
+        if (slotStart.isBefore(LocalDateTime.now(ZoneOffset.UTC))) {
             throw InvalidRequestException("Slot start time must be in the future")
         }
-        if (!request.slotEnd.isAfter(request.slotStart)) {
+        if (!slotEnd.isAfter(slotStart)) {
             throw InvalidRequestException("Slot end time must be after start time")
         }
-        val durationMinutes = java.time.Duration.between(request.slotStart, request.slotEnd).toMinutes()
+        val durationMinutes = java.time.Duration.between(slotStart, slotEnd).toMinutes()
         if (durationMinutes < 15 || durationMinutes > 180) {
             throw InvalidRequestException("Slot duration must be between 15 and 180 minutes")
         }
 
         // ── Overlap check: teacher cannot publish two overlapping slots ──────
         val overlapping = availabilityRepository.findOverlappingSlots(
-            teacher, request.slotStart, request.slotEnd
+            teacher, slotStart, slotEnd
         )
         if (overlapping.isNotEmpty()) {
             val existing = overlapping.first()
@@ -53,8 +60,8 @@ class TeacherAvailabilityService(
 
         val slot = TeacherAvailability(
             teacher = teacher,
-            slotStart = request.slotStart,
-            slotEnd = request.slotEnd,
+            slotStart = slotStart,
+            slotEnd = slotEnd,
             note = request.note
         )
         val saved = availabilityRepository.save(slot)
@@ -83,7 +90,7 @@ class TeacherAvailabilityService(
     fun getAvailableSlotsForTeacher(teacherId: Long): List<AvailabilitySlotResponse> {
         val teacher = userRepository.findById(teacherId)
             .orElseThrow { UserNotFoundException("Teacher not found: $teacherId") }
-        return availabilityRepository.findAvailableByTeacher(teacher, LocalDateTime.now())
+        return availabilityRepository.findAvailableByTeacher(teacher, LocalDateTime.now(ZoneOffset.UTC))
             .map { mapToResponse(it) }
     }
 
@@ -97,30 +104,25 @@ class TeacherAvailabilityService(
     /**
      * Returns structured availability summary for a teacher.
      * The booking screen uses this to gray out dates/hours outside the teacher's slots.
+     *
+     * Windows are returned as full ISO instant strings, NOT raw hour/minute
+     * ints — the backend doesn't know the learner's device timezone, so only
+     * the app (which does) can correctly turn an instant into a local hour.
      */
     fun getAvailabilitySummaryForTeacher(teacherId: Long): TeacherAvailabilitySummaryResponse {
         val teacher = userRepository.findById(teacherId)
             .orElseThrow { UserNotFoundException("Teacher not found: $teacherId") }
-        val slots = availabilityRepository.findAvailableByTeacher(teacher, LocalDateTime.now())
+        val slots = availabilityRepository.findAvailableByTeacher(teacher, LocalDateTime.now(ZoneOffset.UTC))
 
         val windows = slots.map { slot ->
-            val start = slot.slotStart
-            val end   = slot.slotEnd
             AvailabilityWindowDto(
-                slotId      = slot.id,
-                date        = start.toLocalDate().toString(),   // "yyyy-MM-dd"
-                startHour   = start.hour,
-                startMinute = start.minute,
-                endHour     = end.hour,
-                endMinute   = end.minute,
-                note        = slot.note
+                slotId       = slot.id,
+                slotStartIso = slot.slotStart.toInstant(ZoneOffset.UTC).toString(),
+                slotEndIso   = slot.slotEnd.toInstant(ZoneOffset.UTC).toString(),
+                note         = slot.note
             )
         }
-        val distinctDates = windows.map { it.date }.distinct().sorted()
-        return TeacherAvailabilitySummaryResponse(
-            availableWindows = windows,
-            availableDates   = distinctDates
-        )
+        return TeacherAvailabilitySummaryResponse(availableWindows = windows)
     }
 
     private fun mapToResponse(slot: TeacherAvailability) = AvailabilitySlotResponse(

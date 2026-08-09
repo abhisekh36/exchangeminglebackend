@@ -67,8 +67,8 @@ class BrevoEmailService(
         sendEmail(toEmail, toName, subject, htmlContent)
     }
 
-    fun sendPasswordResetEmail(toEmail: String, toName: String, resetToken: String) {
-        val subject = "Reset Your Password - ExchangeMingle"
+    fun sendPasswordResetEmail(toEmail: String, toName: String, code: String) {
+        val subject = "Password Reset Code - ExchangeMingle"
         val htmlContent = """
             <!DOCTYPE html>
             <html>
@@ -78,7 +78,7 @@ class BrevoEmailService(
                     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
                     .header { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
                     .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-                    .token { font-size: 14px; font-family: monospace; color: #333; background: white; padding: 15px; border-radius: 8px; margin: 20px 0; word-break: break-all; border: 2px dashed #f5576c; }
+                    .code { font-size: 32px; font-weight: bold; color: #f5576c; text-align: center; padding: 20px; background: white; border-radius: 8px; letter-spacing: 8px; margin: 20px 0; }
                     .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
                     .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
                 </style>
@@ -90,9 +90,9 @@ class BrevoEmailService(
                     </div>
                     <div class="content">
                         <p>Hi <strong>$toName</strong>,</p>
-                        <p>We received a request to reset your password. Use the token below to reset your password:</p>
-                        <div class="token">$resetToken</div>
-                        <p>This token will expire in <strong>1 hour</strong>.</p>
+                        <p>We received a request to reset your password. Enter the code below in the app to continue:</p>
+                        <div class="code">$code</div>
+                        <p>This code will expire in <strong>15 minutes</strong>.</p>
                         <div class="warning">
                             <strong>⚠️ Security Notice:</strong> If you didn't request a password reset, please ignore this email and ensure your account is secure.
                         </div>

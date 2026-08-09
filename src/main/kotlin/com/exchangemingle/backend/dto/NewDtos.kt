@@ -341,9 +341,22 @@ data class GoogleUserInfo(
 )
 // ===== TEACHER AVAILABILITY DTOs =====
 
+/**
+ * IMPORTANT: these are java.time.Instant, not LocalDateTime.
+ *
+ * The Android app sends slotStart/slotEnd as zoned ISO-8601 strings
+ * (e.g. "2026-08-09T12:30:00Z" — it converts the teacher's local picked
+ * time to UTC via ZonedDateTime.toInstant() before sending). Jackson's
+ * default LocalDateTime deserializer rejects a trailing 'Z' (it only
+ * accepts zone-less ISO_LOCAL_DATE_TIME), so every single addSlot() call
+ * from the app was silently failing with a 400 before this field type
+ * was Instant — no availability was EVER actually being saved, which is
+ * why teacher profiles always showed "No specific availability posted"
+ * and the booking screen always fell back to "book any time".
+ */
 data class CreateAvailabilityRequest(
-    val slotStart: java.time.LocalDateTime,
-    val slotEnd: java.time.LocalDateTime,
+    val slotStart: java.time.Instant,
+    val slotEnd: java.time.Instant,
     val note: String? = null
 )
 
@@ -356,22 +369,24 @@ data class AvailabilitySlotResponse(
 )
 
 /**
- * One open slot window for a specific date.
+ * One open slot window.
  * Learner's booking UI uses this to gray out unavailable dates/times.
+ *
+ * Sent as full ISO instant strings (like AvailabilitySlotResponse) rather
+ * than raw hour/minute ints. The backend has no idea what timezone the
+ * learner's device is in, so it can't correctly hand back "the hour" as a
+ * bare number — only the app, which knows its own device zone, can convert
+ * an instant to the correct local hour/minute for display.
  */
 data class AvailabilityWindowDto(
     val slotId: Long,
-    val date: String,           // "yyyy-MM-dd"
-    val startHour: Int,
-    val startMinute: Int,
-    val endHour: Int,
-    val endMinute: Int,
+    val slotStartIso: String,   // full ISO instant, e.g. "2026-08-09T12:30:00Z"
+    val slotEndIso: String,
     val note: String?
 )
 
 data class TeacherAvailabilitySummaryResponse(
-    val availableWindows: List<AvailabilityWindowDto>,
-    val availableDates: List<String>                    // distinct "yyyy-MM-dd"
+    val availableWindows: List<AvailabilityWindowDto>
 )
 
 // ===== TEACHER PUBLIC PROFILE (full detail) =====

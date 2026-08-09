@@ -181,6 +181,26 @@ class GlobalExceptionHandler {
         )
     }
 
+    // Catches malformed/unparseable request bodies (e.g. a date field the
+    // Android app sends in a format the DTO's declared type can't accept).
+    // Previously this fell through to the generic Exception handler below as
+    // an opaque 500 with the real cause visible only in server logs — the
+    // teacher-availability bug (slots silently never saving) was exactly
+    // this kind of failure. Logging it at WARN with the real cause message
+    // makes this class of bug visible immediately instead of only showing up
+    // as "feature doesn't work" reports days later.
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException::class)
+    fun handleUnreadableRequestBody(ex: org.springframework.http.converter.HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
+        logger.warn("Rejected request with unparseable body: ${ex.mostSpecificCause.message}")
+        return ResponseEntity.badRequest().body(
+            ErrorResponse(
+                status = HttpStatus.BAD_REQUEST.value(),
+                error = "Malformed Request Body",
+                message = "Request body could not be parsed: ${ex.mostSpecificCause.message}"
+            )
+        )
+    }
+
     // Without this, any validation failure (empty file, oversized file, wrong
     // file type — e.g. FileStorageService.validateFile) fell through to the
     // generic Exception handler below and came back as a scary, uninformative

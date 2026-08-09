@@ -52,7 +52,7 @@ class UserProfileService(
 
         // Upcoming unbooked availability slots
         val availableSlots = availabilityRepository
-            .findAvailableByTeacher(teacher, LocalDateTime.now())
+            .findAvailableByTeacher(teacher, LocalDateTime.now(ZoneOffset.UTC))
             .map { slot ->
                 AvailabilitySlotResponse(
                     id        = slot.id,

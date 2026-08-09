@@ -22,8 +22,12 @@ data class ForgotPasswordRequest(
 )
 
 data class ResetPasswordRequest(
-    @field:NotBlank(message = "Reset token is required")
-    val token: String,
+    @field:NotBlank(message = "Email is required")
+    @field:Email(message = "Invalid email format")
+    val email: String,
+
+    @field:NotBlank(message = "Reset code is required")
+    val code: String,
 
     @field:NotBlank(message = "New password is required")
     @field:Size(min = 6, max = 100, message = "Password must be between 6 and 100 characters")
@@ -31,6 +35,15 @@ data class ResetPasswordRequest(
 
     @field:NotBlank(message = "Confirm password is required")
     val confirmPassword: String
+)
+
+data class VerifyResetCodeRequest(
+    @field:NotBlank(message = "Email is required")
+    @field:Email(message = "Invalid email format")
+    val email: String,
+
+    @field:NotBlank(message = "Reset code is required")
+    val code: String
 )
 
 data class ChangePasswordRequest(

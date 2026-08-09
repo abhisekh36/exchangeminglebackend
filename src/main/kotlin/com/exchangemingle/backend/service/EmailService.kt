@@ -15,11 +15,11 @@ class EmailService(
         brevoEmailService.sendVerificationEmail(email, name, code)
     }
 
-    fun sendPasswordResetEmail(email: String, resetToken: String) {
+    fun sendPasswordResetEmail(email: String, code: String) {
         val name = email.substringBefore("@").split(".").joinToString(" ") {
             it.replaceFirstChar { char -> char.uppercase() }
         }
-        brevoEmailService.sendPasswordResetEmail(email, name, resetToken)
+        brevoEmailService.sendPasswordResetEmail(email, name, code)
     }
 
     fun sendPasswordChangedEmail(email: String, name: String) {
