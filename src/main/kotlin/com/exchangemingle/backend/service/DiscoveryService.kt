@@ -58,6 +58,9 @@ class DiscoveryService(
             val skillName = primarySkill?.skill?.name
             val skillId   = primarySkill?.skill?.id
             val hourlyCredits = primarySkill?.hourlyCredits
+            // When this teacher was posted (i.e. when they published this teaching
+            // skill) — used to surface newly-posted teachers at the top of Explore.
+            val postedAt = primarySkill?.createdAt ?: LocalDateTime.MIN
 
             val ratingScore    = (avgRating / 5.0) * 0.40
             val experienceScore = (minOf(totalTaught, 50L).toDouble() / 50.0) * 0.30
@@ -69,7 +72,7 @@ class DiscoveryService(
                 .findAvailableByTeacher(teacher, LocalDateTime.now())
                 .isNotEmpty()
 
-            TeacherCard(
+            postedAt to TeacherCard(
                 id = teacher.id,
                 name = teacher.name,
                 avatar = teacher.avatar,
@@ -82,7 +85,10 @@ class DiscoveryService(
                 skillId = skillId,
                 isAvailable = isAvailable
             )
-        }.sortedByDescending { it.score }
+            // Newest-posted teachers first, oldest last — so someone who just
+            // published a skill is immediately visible on Explore rather than
+            // buried under established teachers with higher quality scores.
+        }.sortedByDescending { (postedAt, _) -> postedAt }.map { (_, card) -> card }
 
         val totalElements = scored.size.toLong()
         val totalPages = ((totalElements + size - 1) / size).toInt()

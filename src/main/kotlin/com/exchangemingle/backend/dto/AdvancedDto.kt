@@ -2,6 +2,7 @@ package com.exchangemingle.backend.dto
 
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 
 data class VerifyEmailRequest(
@@ -60,6 +61,7 @@ data class ChangePasswordRequest(
 
 data class UpdateProfileRequest(
     @field:Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
+    @field:Pattern(regexp = "^[\\p{L} ']*$", message = "Name can only contain letters, spaces, and apostrophes")
     val name: String? = null,
 
     @field:Size(max = 500, message = "Bio cannot exceed 500 characters")
