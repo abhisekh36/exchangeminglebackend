@@ -89,7 +89,15 @@ interface SessionRepository : JpaRepository<Session, Long> {
     @Query("SELECT COUNT(s) FROM Session s WHERE s.learner = :user AND s.status = :status")
     fun countByLearnerAndStatus(@Param("user") user: User, @Param("status") status: SessionStatus): Long
 
-    @Query("SELECT AVG(COALESCE(s.teacherRating, s.rating)) FROM Session s WHERE s.teacher = :user AND (s.teacherRating IS NOT NULL OR s.rating IS NOT NULL)")
+    // A teacher's average rating must come from ratings students GAVE the
+    // teacher (studentRating / legacy s.rating) — NOT from teacherRating,
+    // which is the rating the teacher gave the student. The previous query
+    // had this backwards: it took teacherRating first and only fell back to
+    // s.rating when teacherRating was null, so as soon as a teacher rated
+    // their student, that unrelated rating (of the student) permanently
+    // overrode the teacher's own real rating — which is exactly why ratings
+    // looked broken/stuck regardless of what students actually rated.
+    @Query("SELECT AVG(COALESCE(s.studentRating, s.rating)) FROM Session s WHERE s.teacher = :user AND (s.studentRating IS NOT NULL OR s.rating IS NOT NULL)")
     fun getAverageRatingForTeacher(@Param("user") user: User): Double?
 
     @Query("SELECT SUM(s.creditsUsed) FROM Session s WHERE s.teacher = :user AND s.status = 'COMPLETED'")

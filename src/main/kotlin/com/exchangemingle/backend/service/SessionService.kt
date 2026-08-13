@@ -26,7 +26,8 @@ class SessionService(
     private val userSkillRepository: UserSkillRepository,
     private val pushNotificationService: PushNotificationService,
     private val userSkillService: UserSkillService,
-    private val teacherAvailabilityService: TeacherAvailabilityService
+    private val teacherAvailabilityService: TeacherAvailabilityService,
+    private val achievementService: AchievementService
 ) {
 
     companion object {
@@ -325,10 +326,20 @@ class SessionService(
                 }
             }
             SessionStatus.COMPLETED -> {
-                if (session.status != SessionStatus.CONFIRMED) {
-                    throw InvalidSessionOperationException("Only confirmed sessions can be completed")
+                // A session that was actually joined is IN_PROGRESS by the time
+                // anyone can meaningfully call "complete" on it (generateToken
+                // flips CONFIRMED -> IN_PROGRESS the moment either party joins) —
+                // requiring CONFIRMED here meant a genuinely-held session could
+                // never be marked complete through this endpoint at all, so it
+                // just sat there IN_PROGRESS (and therefore still joinable)
+                // indefinitely, which is exactly how a learner could open the
+                // call again long after the real session happened and trigger a
+                // bogus no-show refund on top of credits the teacher already earned.
+                if (session.status != SessionStatus.CONFIRMED && session.status != SessionStatus.IN_PROGRESS) {
+                    throw InvalidSessionOperationException("Only confirmed or in-progress sessions can be completed")
                 }
                 session.completedAt = LocalDateTime.now()
+                session.actualEndTime = LocalDateTime.now()
 
                 session.teacher?.let { teacher ->
                     teacher.credits += session.creditsHeld
@@ -362,6 +373,16 @@ class SessionService(
 
         session.status = request.status
         val updatedSession = sessionRepository.save(session)
+
+        // Teaching/learning achievements ("First Steps", "Dedicated Teacher",
+        // "Curious Mind", etc.) count COMPLETED sessions, but — same root
+        // cause as the profile achievement — nothing ever triggered a
+        // recheck when a session actually completed, so they never unlocked
+        // no matter how many sessions someone finished.
+        if (request.status == SessionStatus.COMPLETED) {
+            session.teacher?.let { achievementService.checkAndUpdate(it.id) }
+            session.learner?.let { achievementService.checkAndUpdate(it.id) }
+        }
 
         return mapToSessionResponse(updatedSession)
     }

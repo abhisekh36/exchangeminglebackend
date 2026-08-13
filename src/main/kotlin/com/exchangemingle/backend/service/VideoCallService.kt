@@ -51,21 +51,14 @@ class VideoCallService(
         }
 
         val scheduledStart = session.scheduledAt
-        if (scheduledStart != null && session.status == SessionStatus.CONFIRMED) {
-            val now          = LocalDateTime.now()
-            val earliestJoin = scheduledStart.minusMinutes(15)
-            val latestJoin   = scheduledStart.plusMinutes(session.durationMinutes.toLong() + 20)
-            if (now.isBefore(earliestJoin)) {
-                val mins = Duration.between(now, scheduledStart).toMinutes()
-                throw InvalidSessionOperationException(
-                    "Session starts in $mins minute(s). You can join up to 15 minutes early."
-                )
-            }
-            if (now.isAfter(latestJoin)) {
-                throw InvalidSessionOperationException(
-                    "This session has ended. The time window to join has passed."
-                )
-            }
+        // This window must be enforced regardless of whether the session is
+        // still CONFIRMED or has already flipped to IN_PROGRESS (which
+        // happens the moment anyone first joins) — previously it only ran
+        // for CONFIRMED, so the very first join removed the time check
+        // entirely for every join after that, letting a session be rejoined
+        // hours later with no limit at all.
+        if (scheduledStart != null && (session.status == SessionStatus.CONFIRMED || session.status == SessionStatus.IN_PROGRESS)) {
+            enforceJoinWindow(scheduledStart, session.durationMinutes)
         }
 
         val roomName = if (!session.videoCallLink.isNullOrBlank()) {
@@ -96,6 +89,42 @@ class VideoCallService(
         )
     }
 
+    /**
+     * Shared join-time-window check used by both generateToken and
+     * startVideoCall. Previously startVideoCall had NO time check at all —
+     * it only verified the session's status, so as long as status stayed
+     * CONFIRMED/IN_PROGRESS (which, before the completion-flow fix, was
+     * effectively forever), this endpoint alone was a way to join a session
+     * at any point with zero time restriction, regardless of what
+     * generateToken enforced.
+     */
+    private fun enforceJoinWindow(scheduledStart: LocalDateTime, durationMinutes: Int) {
+        val now          = LocalDateTime.now()
+        val earliestJoin = scheduledStart.minusMinutes(15)
+        // Grace period after the session's scheduled end before a NEW join
+        // (i.e. a new LiveKit token) is refused. This used to be a flat
+        // +20 minutes on top of the full duration — for a 5-minute session
+        // that's a 25-minute-long window to join, so a learner could open
+        // the call again a long while after the real session was over, the
+        // teacher (rightly) wouldn't be there, and the no-show job would
+        // refund the learner on top of credits the teacher already earned
+        // for actually holding the session. A flat 5-minute grace still
+        // covers a session genuinely running a few minutes long without
+        // leaving the door open long after it's really finished.
+        val latestJoin   = scheduledStart.plusMinutes(durationMinutes.toLong() + 5)
+        if (now.isBefore(earliestJoin)) {
+            val mins = Duration.between(now, scheduledStart).toMinutes()
+            throw InvalidSessionOperationException(
+                "Session starts in $mins minute(s). You can join up to 15 minutes early."
+            )
+        }
+        if (now.isAfter(latestJoin)) {
+            throw InvalidSessionOperationException(
+                "This session has ended. The time window to join has passed."
+            )
+        }
+    }
+
     @Transactional
     fun startVideoCall(sessionId: Long, userId: Long): VideoCallResponse {
         val session = sessionRepository.findById(sessionId)
@@ -107,6 +136,7 @@ class VideoCallService(
         if (session.teacher?.id != userId && session.learner?.id != userId) {
             throw InvalidSessionOperationException("You are not a participant in this session")
         }
+        session.scheduledAt?.let { enforceJoinWindow(it, session.durationMinutes) }
 
         val roomName = if (!session.videoCallLink.isNullOrBlank()) {
             session.videoCallLink!!

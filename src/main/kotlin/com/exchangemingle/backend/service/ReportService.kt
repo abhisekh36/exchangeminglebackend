@@ -4,6 +4,7 @@ import com.exchangemingle.backend.dto.*
 import com.exchangemingle.backend.exception.UserNotFoundException
 import com.exchangemingle.backend.model.Report
 import com.exchangemingle.backend.model.ReportStatus
+import com.exchangemingle.backend.model.User
 import com.exchangemingle.backend.repository.ReportRepository
 import com.exchangemingle.backend.repository.SessionRepository
 import com.exchangemingle.backend.repository.UserRepository
@@ -48,25 +49,13 @@ class ReportService(
 
         val savedReport = reportRepository.save(report)
 
-        // Check if user has multiple reports - auto-suspend if needed
-        reportedUser?.let { user ->
-            val reportCount = reportRepository.countResolvedReportsByUser(user)
-            if (reportCount >= 3) {
-                // Auto-suspend user
-                user.isActive = false
-                userRepository.save(user)
-
-                // Notify user
-                user.fcmToken?.let { token ->
-                    pushNotificationService.sendNotification(
-                        deviceToken = token,
-                        title = "Account Suspended",
-                        body = "Your account has been suspended due to multiple reports. Contact support for more information.",
-                        data = mapOf("type" to "ACCOUNT_SUSPENDED")
-                    )
-                }
-            }
-        }
+        // Notify the reported user that a report was filed, but do NOT apply
+        // any punishment yet — that's what "the system checks if they
+        // actually did something bad" means: nothing happens on the strength
+        // of an accusation alone. Punishment is only applied in
+        // updateReportStatus, and only once an admin has actually reviewed
+        // the report and confirmed it (status -> RESOLVED). See the note
+        // there for why this used to be broken.
 
         return mapToReportResponse(savedReport)
     }
@@ -125,6 +114,7 @@ class ReportService(
         val admin = userRepository.findById(adminId)
             .orElseThrow { UserNotFoundException("Admin not found: $adminId") }
 
+        val previousStatus = report.status
         report.status = request.status
         report.adminNotes = request.adminNotes
 
@@ -134,6 +124,25 @@ class ReportService(
         }
 
         val updatedReport = reportRepository.save(report)
+
+        // This is the actual "check if they did something bad, then punish
+        // accordingly" system: nothing happens off the back of a raw
+        // accusation (see createReport). It's only when an admin has
+        // investigated and confirmed the report — moving it to RESOLVED —
+        // that any consequence is applied, and the consequence escalates
+        // with how many CONFIRMED (resolved) reports this user now has, not
+        // with how many people merely complained. A report moved to
+        // DISMISSED (investigated and found not credible) never triggers
+        // anything.
+        //
+        // Previously this check ran inside createReport itself, counting
+        // already-resolved reports at the moment a brand-new, still-PENDING
+        // report came in — so it fired (if at all) on a later, unrelated
+        // report rather than at the moment a report was actually confirmed,
+        // and a confirmed report on its own never did anything.
+        if (request.status == ReportStatus.RESOLVED && previousStatus != ReportStatus.RESOLVED) {
+            report.reportedUser?.let { applyPunishment(it) }
+        }
 
         // Notify reporter
         report.reporter?.fcmToken?.let { token ->
@@ -150,6 +159,56 @@ class ReportService(
         }
 
         return mapToReportResponse(updatedReport)
+    }
+
+    /**
+     * Graduated punishment applied once a report against [user] has been
+     * confirmed (RESOLVED) by an admin. Escalates with the user's total
+     * count of confirmed reports so a first offense gets a warning and a
+     * reliability hit rather than jumping straight to suspension, while a
+     * repeat offender is suspended outright.
+     */
+    private fun applyPunishment(user: User) {
+        val confirmedReportCount = reportRepository.countResolvedReportsByUser(user)
+
+        when {
+            confirmedReportCount >= 3 -> {
+                user.isActive = false
+                userRepository.save(user)
+                user.fcmToken?.let { token ->
+                    pushNotificationService.sendNotification(
+                        deviceToken = token,
+                        title = "Account Suspended",
+                        body = "Your account has been suspended after multiple confirmed reports. Contact support for more information.",
+                        data = mapOf("type" to "ACCOUNT_SUSPENDED")
+                    )
+                }
+            }
+            confirmedReportCount == 2L -> {
+                user.reliabilityScore = (user.reliabilityScore - 25).coerceAtLeast(0)
+                userRepository.save(user)
+                user.fcmToken?.let { token ->
+                    pushNotificationService.sendNotification(
+                        deviceToken = token,
+                        title = "Final Warning",
+                        body = "A second report against you has been confirmed. One more confirmed report will suspend your account.",
+                        data = mapOf("type" to "REPORT_WARNING", "severity" to "final")
+                    )
+                }
+            }
+            else -> {
+                user.reliabilityScore = (user.reliabilityScore - 10).coerceAtLeast(0)
+                userRepository.save(user)
+                user.fcmToken?.let { token ->
+                    pushNotificationService.sendNotification(
+                        deviceToken = token,
+                        title = "Report Confirmed",
+                        body = "A report against you was reviewed and confirmed. Please review our community guidelines.",
+                        data = mapOf("type" to "REPORT_WARNING", "severity" to "first")
+                    )
+                }
+            }
+        }
     }
 
     private fun mapToReportResponse(report: Report): ReportResponse {

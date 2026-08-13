@@ -24,7 +24,8 @@ class UserService(
     private val passwordEncoder: PasswordEncoder,
     private val googleOAuthService: GoogleOAuthService,
     private val jwtService: JwtService,
-    private val refreshTokenService: RefreshTokenService
+    private val refreshTokenService: RefreshTokenService,
+    private val achievementService: AchievementService
 ) : UserDetailsService {
 
     override fun loadUserByUsername(username: String): UserDetails {
@@ -100,6 +101,17 @@ class UserService(
         request.avatar?.let { user.avatar = it.trim() }
 
         val updatedUser = userRepository.save(user)
+
+        // The "All Set Up" (PROFILE_COMPLETE) achievement — and any other
+        // achievement whose progress depends on profile fields — was never
+        // actually being recalculated anywhere: the backend only recomputed
+        // achievement progress inside a POST /achievements/check endpoint
+        // that the app never called. So filling in a bio and avatar updated
+        // the columns just fine, but nothing ever re-checked whether that
+        // unlocked anything. Checking right here, right after the fields
+        // that unlock it are saved, is what actually closes that gap.
+        achievementService.checkAndUpdate(userId)
+
         return mapToUserResponse(updatedUser)
     }
 
