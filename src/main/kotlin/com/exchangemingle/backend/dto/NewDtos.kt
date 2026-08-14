@@ -413,7 +413,8 @@ data class TeachingSkillDetail(
     val proficiencyLevel: Int?,
     val hourlyCredits: Double?,
     val yearsOfExperience: Int?,
-    val teachingBio: String?
+    val teachingBio: String?,
+    val proofUrl: String?
 )
 
 // ===== LEARNER PUBLIC PROFILE (for teacher viewing request) =====

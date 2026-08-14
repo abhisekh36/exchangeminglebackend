@@ -43,6 +43,7 @@ class UserSkillService(
                 request.hourlyCredits?.let { existing.hourlyCredits = it }
                 request.yearsOfExperience?.let { existing.yearsOfExperience = it }
                 request.teachingBio?.let { existing.teachingBio = it }
+                request.proofUrl?.let { existing.proofUrl = it }
                 val reactivated = userSkillRepository.save(existing)
                 return mapToResponse(reactivated)
             }
@@ -66,6 +67,7 @@ class UserSkillService(
             hourlyCredits = request.hourlyCredits,
             yearsOfExperience = request.yearsOfExperience,
             teachingBio = request.teachingBio,
+            proofUrl = request.proofUrl,
             isActive = true
         )
 
@@ -74,6 +76,7 @@ class UserSkillService(
     }
 
     @Transactional
+    @CacheEvict(value = ["discovery-teachers"], allEntries = true, cacheManager = "redisCacheManager")
     fun updateUserSkill(userId: Long, userSkillId: Long, request: UpdateUserSkillRequest): UserSkillResponse {
         val user = userRepository.findById(userId)
             .orElseThrow { UserNotFoundException("User not found") }
@@ -94,6 +97,7 @@ class UserSkillService(
             }
             request.yearsOfExperience?.let { userSkill.yearsOfExperience = it }
             request.teachingBio?.let { userSkill.teachingBio = it }
+            request.proofUrl?.let { userSkill.proofUrl = it }
         }
 
         request.isActive?.let { userSkill.isActive = it }
@@ -103,6 +107,12 @@ class UserSkillService(
     }
 
     @Transactional
+    // A deleted (or edited) skill wasn't evicting the discovery cache at all,
+    // so the Explore tab could keep serving a stale cached page — including
+    // one built while a since-deleted skill was still active — until some
+    // unrelated add() elsewhere happened to clear the whole cache region.
+    // Deleting and editing both need to invalidate it themselves.
+    @CacheEvict(value = ["discovery-teachers"], allEntries = true, cacheManager = "redisCacheManager")
     fun removeUserSkill(userId: Long, userSkillId: Long) {
         val userSkill = userSkillRepository.findById(userSkillId)
             .orElseThrow { SkillNotFoundException("User skill not found") }
@@ -239,6 +249,7 @@ class UserSkillService(
             hourlyCredits = userSkill.hourlyCredits,
             yearsOfExperience = userSkill.yearsOfExperience,
             teachingBio = userSkill.teachingBio,
+            proofUrl = userSkill.proofUrl,
             isActive = userSkill.isActive
         )
     }

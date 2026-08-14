@@ -24,7 +24,12 @@ data class AddUserSkillRequest(
     val yearsOfExperience: Int? = null,
 
     @field:Size(max = 1000, message = "Teaching bio cannot exceed 1000 characters")
-    val teachingBio: String? = null
+    val teachingBio: String? = null,
+
+    // Optional link to a resume, portfolio, certificate, or similar proof of
+    // expertise for this specific skill.
+    @field:Size(max = 500, message = "Proof URL cannot exceed 500 characters")
+    val proofUrl: String? = null
 )
 
 data class UpdateUserSkillRequest(
@@ -41,6 +46,9 @@ data class UpdateUserSkillRequest(
     @field:Size(max = 1000, message = "Teaching bio cannot exceed 1000 characters")
     val teachingBio: String? = null,
 
+    @field:Size(max = 500, message = "Proof URL cannot exceed 500 characters")
+    val proofUrl: String? = null,
+
     val isActive: Boolean? = null
 )
 
@@ -52,6 +60,7 @@ data class UserSkillResponse(
     val hourlyCredits: Double?,
     val yearsOfExperience: Int?,
     val teachingBio: String?,
+    val proofUrl: String?,
     val isActive: Boolean
 )
 

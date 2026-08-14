@@ -46,7 +46,8 @@ class UserProfileService(
                     proficiencyLevel  = us.proficiencyLevel,
                     hourlyCredits     = us.hourlyCredits,
                     yearsOfExperience = us.yearsOfExperience,
-                    teachingBio       = us.teachingBio
+                    teachingBio       = us.teachingBio,
+                    proofUrl          = us.proofUrl
                 )
             }
 

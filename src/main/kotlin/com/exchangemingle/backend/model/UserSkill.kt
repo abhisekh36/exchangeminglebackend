@@ -47,6 +47,16 @@ class UserSkill(
     @Column(name = "teaching_bio", length = 1000)
     var teachingBio: String? = null,  // Specific bio for this skill
 
+    // Optional link to a resume, portfolio, certificate, or similar — lets a
+    // learner judge whether a teacher's expertise is demonstrable before
+    // booking, rather than taking the proficiency/years fields on faith.
+    // NOTE: this column does not exist in the database yet. This project
+    // runs with spring.jpa.hibernate.ddl-auto=validate (no migration tool
+    // configured), so it must be added manually before deploying:
+    //   ALTER TABLE user_skills ADD COLUMN proof_url VARCHAR(500);
+    @Column(name = "proof_url", length = 500)
+    var proofUrl: String? = null,
+
     @Column(name = "is_active", nullable = false)
     var isActive: Boolean = true,
 

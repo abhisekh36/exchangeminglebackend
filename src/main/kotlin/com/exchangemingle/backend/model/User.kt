@@ -46,8 +46,15 @@ class User(
     @Column(nullable = false)
     var heldCredits: Double = 0.0,
 
+    // Starts at a neutral baseline rather than the max (100) — a brand-new
+    // account hasn't demonstrated anything yet, so it shouldn't display the
+    // same trust score as someone with a long track record of completed,
+    // on-time, well-rated sessions. It's built up (see SessionService /
+    // ReportService) toward 100 through verified activity: completing
+    // sessions, being rated well, showing up on time — and brought back
+    // down by no-shows and confirmed reports.
     @Column(nullable = false)
-    var reliabilityScore: Int = 100,
+    var reliabilityScore: Int = 70,
 
     @Column(nullable = false)
     var noShowCount: Int = 0,

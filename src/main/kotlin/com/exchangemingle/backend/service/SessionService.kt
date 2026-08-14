@@ -7,6 +7,7 @@ import com.exchangemingle.backend.model.SessionStatus
 import com.exchangemingle.backend.model.UserStatus
 import com.exchangemingle.backend.repository.SessionRepository
 import com.exchangemingle.backend.model.SkillRole
+import com.exchangemingle.backend.model.User
 import com.exchangemingle.backend.repository.SkillRepository
 import com.exchangemingle.backend.repository.UserSkillRepository
 import com.exchangemingle.backend.repository.UserRepository
@@ -343,8 +344,14 @@ class SessionService(
 
                 session.teacher?.let { teacher ->
                     teacher.credits += session.creditsHeld
+                    // Reliability is earned through verified activity — actually
+                    // holding a scheduled session end-to-end is the clearest
+                    // signal of that, so both participants get a small bump
+                    // toward the 100 ceiling each time one completes normally.
+                    teacher.reliabilityScore = (teacher.reliabilityScore + 2).coerceAtMost(100)
                     session.learner?.let { learner ->
                         learner.heldCredits -= session.creditsHeld
+                        learner.reliabilityScore = (learner.reliabilityScore + 2).coerceAtMost(100)
                         userRepository.save(learner)
                     }
                     userRepository.save(teacher)
@@ -406,6 +413,9 @@ class SessionService(
             }
             session.teacherRating = request.rating
             session.teacherFeedback = request.feedback
+            // Teacher is rating the student — apply the reliability effect to
+            // the STUDENT, since that's who's being rated here.
+            session.learner?.let { applyRatingToReliability(it, request.rating) }
         } else {
             if (session.studentRating != null) {
                 throw InvalidSessionOperationException("You have already rated this session")
@@ -415,10 +425,33 @@ class SessionService(
             // Keep legacy field in sync for queries that use session.rating
             session.rating = request.rating
             session.feedback = request.feedback
+            // Student is rating the teacher — apply the reliability effect to
+            // the TEACHER.
+            session.teacher?.let { applyRatingToReliability(it, request.rating) }
         }
 
         val updatedSession = sessionRepository.save(session)
         return mapToSessionResponse(updatedSession)
+    }
+
+    /**
+     * Reliability is meant to be earned through verified activity, not just
+     * handed out at a fixed 100 — this is one of the few concrete signals of
+     * "verified activity" available: another real person's rating of a
+     * session that actually happened. A strong rating nudges the recipient's
+     * score up (toward the 100 ceiling); a poor one nudges it down. Small
+     * deltas by design — reliability should move gradually with a consistent
+     * pattern of behavior, not swing on a single rating.
+     */
+    private fun applyRatingToReliability(user: User, rating: Int) {
+        val delta = when {
+            rating >= 4 -> 3
+            rating <= 2 -> -5
+            else        -> 0   // a "3" is neutral — neither rewarded nor penalized
+        }
+        if (delta == 0) return
+        user.reliabilityScore = (user.reliabilityScore + delta).coerceIn(0, 100)
+        userRepository.save(user)
     }
 
     fun getUserStatistics(userId: Long): SessionStatistics {
@@ -528,6 +561,10 @@ class SessionService(
                 session.learner?.let { learner ->
                     learner.heldCredits -= session.creditsHeld
                     learner.noShowCount = learner.noShowCount + 1
+                    // "Showing up on time" is one of the concrete signals the
+                    // reliability score is meant to track — a confirmed
+                    // no-show is the clearest possible negative case for it.
+                    learner.reliabilityScore = (learner.reliabilityScore - 10).coerceAtLeast(0)
                     userRepository.save(learner)
                 }
                 sessionRepository.save(session)
@@ -561,6 +598,12 @@ class SessionService(
                     learner.heldCredits -= session.creditsHeld
                     learner.credits += session.creditsHeld  // full refund
                     userRepository.save(learner)
+                }
+                session.teacher?.let { teacher ->
+                    // Same signal as above, applied to the teacher for
+                    // failing to show up to a session they confirmed.
+                    teacher.reliabilityScore = (teacher.reliabilityScore - 10).coerceAtLeast(0)
+                    userRepository.save(teacher)
                 }
                 sessionRepository.save(session)
                 session.learner?.fcmToken?.let { token ->
