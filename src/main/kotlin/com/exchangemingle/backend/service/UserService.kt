@@ -12,8 +12,10 @@ import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.security.core.userdetails.UsernameNotFoundException
 import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.cache.annotation.Caching
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.cache.annotation.CacheEvict
 
@@ -27,6 +29,15 @@ class UserService(
     private val refreshTokenService: RefreshTokenService,
     private val achievementService: AchievementService
 ) : UserDetailsService {
+
+    // Play Store review account: this address never receives its verification
+    // email in practice (it's a Gmail address that itself needs a login code
+    // to open), so it's auto-verified on registration to skip that screen
+    // entirely for the reviewer. Every other account still goes through the
+    // normal email-verification flow untouched. Override via the
+    // APP_REVIEWER_EMAIL env var if this account ever changes.
+    @Value("\${app.reviewer.email:tripventuresco@gmail.com}")
+    private lateinit var reviewerEmail: String
 
     override fun loadUserByUsername(username: String): UserDetails {
         val user = userRepository.findByEmail(username)
@@ -61,6 +72,10 @@ class UserService(
         user.authProvider = "EMAIL"
         user.needsNameSetup = false
 
+        if (user.email == reviewerEmail.trim().lowercase()) {
+            user.isEmailVerified = true
+        }
+
         val savedUser = userRepository.save(user)
         return mapToUserResponse(savedUser)
     }
@@ -69,6 +84,24 @@ class UserService(
     fun findByEmail(email: String): User {
         return userRepository.findByEmail(email)
             .orElseThrow { UserNotFoundException("User not found: $email") }
+    }
+
+    // Self-heals the reviewer account if it was created BEFORE this bypass
+    // existed (e.g. during the closed-testing setup) and is therefore still
+    // sitting unverified in the database. Cheap to call on every login;
+    // it's a no-op once the flag is already true, and does nothing for
+    // every other user.
+    @Caching(evict = [
+        CacheEvict(value = ["users"], key = "#user.id"),
+        CacheEvict(value = ["user-profiles"], key = "#user.email")
+    ])
+    @Transactional
+    fun ensureReviewerVerified(user: User): User {
+        if (user.email == reviewerEmail.trim().lowercase() && !user.isEmailVerified) {
+            user.isEmailVerified = true
+            return userRepository.save(user)
+        }
+        return user
     }
 
     @Cacheable(value = ["users"], key = "#id")

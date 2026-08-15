@@ -28,7 +28,12 @@ class AuthController(
         val userResponse = userService.registerUser(request)
         val user = userService.findByEmail(userResponse.email)
 
-        emailVerificationService.createVerificationToken(user)
+        // Skip issuing/sending a code for accounts that are already verified
+        // (currently just the designated Play Store reviewer account) so we
+        // don't send an email nobody needs and don't create a dead token.
+        if (!user.isEmailVerified) {
+            emailVerificationService.createVerificationToken(user)
+        }
 
         val accessToken = jwtService.generateToken(user.email)
         val refreshToken = refreshTokenService.createRefreshToken(user)
@@ -49,7 +54,7 @@ class AuthController(
             UsernamePasswordAuthenticationToken(request.email, request.password)
         )
 
-        val user = userService.findByEmail(request.email)
+        val user = userService.ensureReviewerVerified(userService.findByEmail(request.email))
         val accessToken = jwtService.generateToken(user.email)
         val refreshToken = refreshTokenService.createRefreshToken(user)
 
