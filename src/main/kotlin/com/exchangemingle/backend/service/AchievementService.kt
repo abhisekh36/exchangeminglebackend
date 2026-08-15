@@ -26,12 +26,15 @@ class AchievementService(
 
     @PostConstruct
     fun seedAchievements() {
+        // Credit rewards scale with how hard the achievement is to earn (its "level"):
+        // small one-off milestones give a small bonus, while long-term dedication
+        // milestones (10+ / 50+ sessions) pay out progressively more credits.
         val definitions = listOf(
-            Triple("FIRST_TEACH",        "First Steps",         AchievementCategory.TEACHING)  to Pair(1,  0.5),
-            Triple("DEDICATED_TEACHER",  "Dedicated Teacher",   AchievementCategory.TEACHING)  to Pair(10, 1.0),
-            Triple("MASTER_TEACHER",     "Master Teacher",      AchievementCategory.TEACHING)  to Pair(50, 3.0),
-            Triple("FIRST_LEARN",        "Curious Mind",        AchievementCategory.LEARNING)  to Pair(1,  0.5),
-            Triple("EAGER_LEARNER",      "Eager Learner",       AchievementCategory.LEARNING)  to Pair(10, 1.0),
+            Triple("FIRST_TEACH",        "First Steps",         AchievementCategory.TEACHING)  to Pair(1,  1.0),
+            Triple("DEDICATED_TEACHER",  "Dedicated Teacher",   AchievementCategory.TEACHING)  to Pair(10, 3.0),
+            Triple("MASTER_TEACHER",     "Master Teacher",      AchievementCategory.TEACHING)  to Pair(50, 10.0),
+            Triple("FIRST_LEARN",        "Curious Mind",        AchievementCategory.LEARNING)  to Pair(1,  1.0),
+            Triple("EAGER_LEARNER",      "Eager Learner",       AchievementCategory.LEARNING)  to Pair(10, 3.0),
             Triple("PROFILE_COMPLETE",   "All Set Up",          AchievementCategory.MILESTONE) to Pair(1,  1.0)
         )
 
@@ -39,7 +42,8 @@ class AchievementService(
             val (key, name, category) = info
             val (requiredCount, creditReward) = reward
 
-            if (achievementRepository.findByKey(key) == null) {
+            val existing = achievementRepository.findByKey(key)
+            if (existing == null) {
                 achievementRepository.save(Achievement(
                     key = key, name = name,
                     description = getDescription(key),
@@ -48,6 +52,18 @@ class AchievementService(
                     category = category
                 ))
                 logger.info("Seeded achievement: $key")
+            } else if (existing.creditReward != creditReward || existing.requiredCount != requiredCount ||
+                existing.name != name || existing.description != getDescription(key)
+            ) {
+                // Keep already-deployed rows in sync with the latest tuning so
+                // production data doesn't drift from what the code defines.
+                existing.name = name
+                existing.description = getDescription(key)
+                existing.creditReward = creditReward
+                existing.requiredCount = requiredCount
+                existing.category = category
+                achievementRepository.save(existing)
+                logger.info("Updated achievement: $key")
             }
         }
     }
