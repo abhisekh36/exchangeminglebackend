@@ -145,6 +145,118 @@ class SessionService(
         return mapToSessionResponse(savedSession)
     }
 
+    /**
+     * Creates a Session directly in CONFIRMED status for a learner request the
+     * teacher has already accepted — used by the "Accept & Schedule Session"
+     * flow. Unlike [createSession] (which starts a session as PENDING, awaiting
+     * a separate teacher-accept step), the teacher here has already committed
+     * by accepting the open request, so there's no second accept to wait on.
+     * The learner (not the teacher) gets notified, since the teacher is the
+     * one taking this action.
+     */
+    @Transactional
+    fun createConfirmedSessionForAcceptedRequest(
+        learnerId: Long,
+        teacherId: Long,
+        skillId: Long,
+        durationMinutes: Int,
+        scheduledAt: LocalDateTime
+    ): SessionResponse {
+        val learner = userRepository.findById(learnerId)
+            .orElseThrow { UserNotFoundException("Learner not found with id: $learnerId") }
+
+        val teacher = userRepository.findById(teacherId)
+            .orElseThrow { UserNotFoundException("Teacher not found with id: $teacherId") }
+
+        val skill = skillRepository.findById(skillId)
+            .orElseThrow { SkillNotFoundException("Skill not found with id: $skillId") }
+
+        if (learner.id == teacher.id) {
+            throw SelfBookingException()
+        }
+
+        if (learner.status == UserStatus.SUSPENDED) {
+            learner.suspendedUntil?.let { until ->
+                if (LocalDateTime.now().isBefore(until)) {
+                    throw InvalidSessionOperationException("This learner's account is suspended until $until")
+                } else {
+                    learner.status = UserStatus.ACTIVE
+                    learner.suspendedUntil = null
+                }
+            }
+        }
+
+        if (learner.status == UserStatus.BANNED) {
+            throw InvalidSessionOperationException("This learner's account has been banned")
+        }
+
+        val teacherSkill = userSkillRepository
+            .findByUserAndSkillAndRole(teacher, skill, SkillRole.TEACHER)
+            .orElse(null)
+        val creditsPerMinute = if (teacherSkill?.hourlyCredits != null && teacherSkill.hourlyCredits!! > 0)
+            teacherSkill.hourlyCredits!! / 60.0
+        else
+            DEFAULT_CREDITS_PER_MINUTE
+
+        val creditsNeeded = durationMinutes * creditsPerMinute
+
+        if (learner.credits < creditsNeeded) {
+            throw InsufficientCreditsException(
+                "Learner has insufficient credits for this session. Required: $creditsNeeded, Available: ${learner.credits}"
+            )
+        }
+
+        // ── Conflict check: teacher can't be double-booked ────────────
+        val sessionStart = scheduledAt
+        val sessionEnd   = sessionStart.plusMinutes(durationMinutes.toLong())
+        val windowStart  = sessionStart.minusHours(3)
+        val candidates   = sessionRepository.findConflictingSessionsForTeacher(
+            teacher, sessionStart, sessionEnd, windowStart,
+            listOf(SessionStatus.PENDING, SessionStatus.CONFIRMED, SessionStatus.IN_PROGRESS)
+        )
+        val hasConflict  = candidates.any { existing ->
+            val existingEnd = existing.scheduledAt!!.plusMinutes(existing.durationMinutes.toLong())
+            existing.scheduledAt!!.isBefore(sessionEnd) && existingEnd.isAfter(sessionStart)
+        }
+        if (hasConflict) {
+            throw InvalidSessionOperationException(
+                "You already have a session booked during that time slot. Please choose a different time."
+            )
+        }
+
+        learner.credits -= creditsNeeded
+        learner.heldCredits += creditsNeeded
+
+        val session = Session(
+            teacher = teacher,
+            learner = learner,
+            skill = skill,
+            durationMinutes = durationMinutes,
+            creditsUsed = creditsNeeded,
+            creditsHeld = creditsNeeded,
+            scheduledAt = scheduledAt,
+            status = SessionStatus.CONFIRMED  // teacher already committed by accepting the request
+        )
+
+        val savedSession = sessionRepository.save(session)
+        userRepository.save(learner)
+
+        // Notify the learner — the teacher is the one who just scheduled this.
+        learner.fcmToken?.let { token ->
+            pushNotificationService.sendNotification(
+                deviceToken = token,
+                title = "Session Scheduled! 🎉",
+                body = "${teacher.name} scheduled your ${skill.name} session",
+                data = mapOf(
+                    "type" to "SESSION_CONFIRMED",
+                    "sessionId" to savedSession.id.toString()
+                )
+            )
+        }
+
+        return mapToSessionResponse(savedSession)
+    }
+
     @Transactional
     fun acceptSessionByTeacher(sessionId: Long, teacherId: Long): SessionResponse {
         val session = sessionRepository.findById(sessionId)

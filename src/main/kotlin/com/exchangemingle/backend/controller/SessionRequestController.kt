@@ -38,6 +38,28 @@ class SessionRequestController(
         return ResponseEntity.ok(sessionRequestService.acceptRequest(id, user.id))
     }
 
+    /**
+     * Teacher picks a date/time for a request they've already accepted, which
+     * actually creates the bookable Session. Previously "Accept & Schedule
+     * Session" only did the accept half — there was no way to get from
+     * "accepted" to an actual scheduled session, which is what this fixes.
+     */
+    @PostMapping("/{id}/schedule")
+    fun scheduleAcceptedRequest(
+        @PathVariable id: Long,
+        @RequestHeader("Authorization") authHeader: String,
+        @Valid @RequestBody dto: ScheduleAcceptedRequestDto
+    ): ResponseEntity<SessionResponse> {
+        val token = authHeader.substring(7)
+        val email = jwtService.extractUsername(token)
+        val user = userService.findByEmail(email)
+        val scheduledAt = java.time.Instant.parse(dto.scheduledStartTime)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDateTime()
+        val response = sessionRequestService.scheduleAcceptedRequest(id, user.id, scheduledAt)
+        return ResponseEntity.status(HttpStatus.CREATED).body(response)
+    }
+
     @DeleteMapping("/{id}")
     fun cancelRequest(
         @PathVariable id: Long,

@@ -25,7 +25,8 @@ class SessionRequestService(
     private val userRepository: UserRepository,
     private val skillRepository: SkillRepository,
     private val pushNotificationService: PushNotificationService,
-    private val userSkillRepository: UserSkillRepository
+    private val userSkillRepository: UserSkillRepository,
+    private val sessionService: SessionService
 ) {
 
     private val logger = LoggerFactory.getLogger(SessionRequestService::class.java)
@@ -102,6 +103,48 @@ class SessionRequestService(
         }
 
         return mapToResponse(updated)
+    }
+
+    /**
+     * Teacher picks a date/time for a request they've already accepted. This is
+     * the step that was missing: accepting only claimed the request, it never
+     * created an actual bookable Session. This creates one (CONFIRMED — the
+     * teacher already committed by accepting) and links it back to the request.
+     */
+    @Transactional
+    fun scheduleAcceptedRequest(requestId: Long, teacherId: Long, scheduledAt: LocalDateTime): SessionResponse {
+        val request = sessionRequestRepository.findById(requestId)
+            .orElseThrow { SessionNotFoundException("Request not found: $requestId") }
+
+        if (request.acceptedBy?.id != teacherId) {
+            throw InvalidSessionOperationException("Only the teacher who accepted this request can schedule it")
+        }
+
+        if (request.status != SessionRequestStatus.ACCEPTED) {
+            throw InvalidSessionOperationException("Only accepted requests can be scheduled")
+        }
+
+        if (request.scheduledSessionId != null) {
+            throw InvalidSessionOperationException("This request has already been scheduled")
+        }
+
+        val learnerId = request.learner?.id
+            ?: throw UserNotFoundException("Learner not found for request $requestId")
+        val skillId = request.skill?.id
+            ?: throw SkillNotFoundException("Skill not found for request $requestId")
+
+        val sessionResponse = sessionService.createConfirmedSessionForAcceptedRequest(
+            learnerId = learnerId,
+            teacherId = teacherId,
+            skillId = skillId,
+            durationMinutes = request.durationMinutes,
+            scheduledAt = scheduledAt
+        )
+
+        request.scheduledSessionId = sessionResponse.id
+        sessionRequestRepository.save(request)
+
+        return sessionResponse
     }
 
     @Transactional
@@ -211,7 +254,8 @@ class SessionRequestService(
             acceptedAt = sr.acceptedAt,
             createdAt = sr.createdAt,
             viewCount = sr.viewCount,
-            interestCount = sr.interestCount
+            interestCount = sr.interestCount,
+            scheduledSessionId = sr.scheduledSessionId
         )
     }
 }

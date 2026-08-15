@@ -28,7 +28,12 @@ class DiscoveryService(
     private val teacherAvailabilityRepository: com.exchangemingle.backend.repository.TeacherAvailabilityRepository
 ) {
 
-    @Cacheable(value = ["discovery-teachers"], key = "#skillId + ':' + #page + ':' + #size", cacheManager = "redisCacheManager")
+    // "cv1:" (cache-version 1) prefix: guards against ever reading back a
+    // stale entry written by a previous, differently-configured serializer.
+    // If the value format changes again in the future, bumping this prefix
+    // (cv2, cv3, ...) instantly and safely orphans anything written under
+    // the old format instead of relying on TTL alone to flush it out.
+    @Cacheable(value = ["discovery-teachers"], key = "'cv1:' + #skillId + ':' + #page + ':' + #size", cacheManager = "redisCacheManager")
     fun findTeachers(skillId: Long? = null, page: Int = 0, size: Int = 20): PagedTeacherCardResponse {
         // Use UserSkill as source of truth: any active TEACHER skill = discoverable
         val teacherUserSkills = if (skillId != null) {
@@ -103,7 +108,7 @@ class DiscoveryService(
         )
     }
 
-    @Cacheable(value = ["discovery-requests"], key = "#skillId + ':' + #page + ':' + #size", cacheManager = "redisCacheManager")
+    @Cacheable(value = ["discovery-requests"], key = "'cv1:' + #skillId + ':' + #page + ':' + #size", cacheManager = "redisCacheManager")
     // readOnly = true is a safety net, not the actual fix — the JOIN FETCH queries
     // in SessionRequestRepository already load everything needed in one shot, but
     // keeping this transactional protects against any future field added here

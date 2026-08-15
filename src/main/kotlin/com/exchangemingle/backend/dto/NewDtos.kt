@@ -31,7 +31,16 @@ data class SessionRequestResponse(
     val acceptedAt: LocalDateTime?,
     val createdAt: LocalDateTime,
     val viewCount: Int = 0,
-    val interestCount: Int = 0
+    val interestCount: Int = 0,
+    // Non-null once the accepting teacher has actually picked a date/time and
+    // a real Session was created — lets the frontend show "Scheduled" and
+    // link straight to the session instead of offering to schedule again.
+    val scheduledSessionId: Long? = null
+)
+
+data class ScheduleAcceptedRequestDto(
+    @field:NotNull(message = "Scheduled start time is required")
+    val scheduledStartTime: String   // ISO-8601 instant, e.g. "2026-08-20T14:30:00Z"
 )
 
 data class PagedSessionRequestResponse(

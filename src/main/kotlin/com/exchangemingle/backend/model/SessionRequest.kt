@@ -54,7 +54,16 @@ class SessionRequest(
 
     /** Number of teachers who expressed interest in this request */
     @Column(nullable = false)
-    var interestCount: Int = 0
+    var interestCount: Int = 0,
+
+    /**
+     * Set once the teacher who accepted this request actually picks a date/time
+     * and a real Session gets created for it. Before this is set, "accepted"
+     * only means the teacher claimed the request — no session exists yet and
+     * nothing is on either person's calendar.
+     */
+    @Column
+    var scheduledSessionId: Long? = null
 ) {
     @PrePersist
     fun prePersist() {
