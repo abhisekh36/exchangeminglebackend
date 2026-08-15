@@ -74,6 +74,12 @@ class UserService(
 
         if (user.email == reviewerEmail.trim().lowercase()) {
             user.isEmailVerified = true
+            // No top-up/purchase flow exists anywhere in this app, so the
+            // normal 5.0 starting balance would eventually strand the
+            // reviewer with an InsufficientCreditsException while testing
+            // session bookings. Give this account a balance high enough
+            // that it never runs out.
+            user.credits = 100000.0
         }
 
         val savedUser = userRepository.save(user)
@@ -88,18 +94,28 @@ class UserService(
 
     // Self-heals the reviewer account if it was created BEFORE this bypass
     // existed (e.g. during the closed-testing setup) and is therefore still
-    // sitting unverified in the database. Cheap to call on every login;
-    // it's a no-op once the flag is already true, and does nothing for
-    // every other user.
+    // sitting unverified and/or low-on-credits in the database. Cheap to
+    // call on every login; it's a no-op once both are already fixed, and
+    // does nothing for every other user.
     @Caching(evict = [
         CacheEvict(value = ["users"], key = "#user.id"),
         CacheEvict(value = ["user-profiles"], key = "#user.email")
     ])
     @Transactional
     fun ensureReviewerVerified(user: User): User {
-        if (user.email == reviewerEmail.trim().lowercase() && !user.isEmailVerified) {
-            user.isEmailVerified = true
-            return userRepository.save(user)
+        if (user.email == reviewerEmail.trim().lowercase()) {
+            var changed = false
+            if (!user.isEmailVerified) {
+                user.isEmailVerified = true
+                changed = true
+            }
+            if (user.credits < 1000.0) {
+                user.credits = 100000.0
+                changed = true
+            }
+            if (changed) {
+                return userRepository.save(user)
+            }
         }
         return user
     }
