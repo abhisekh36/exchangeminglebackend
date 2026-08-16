@@ -102,4 +102,20 @@ interface UserSkillRepository : JpaRepository<UserSkill, Long> {
     fun countTeachersBySkillId(@Param("skillId") skillId: Long): Long
 
     fun findByRoleAndIsActive(role: SkillRole, isActive: Boolean): List<UserSkill>
+
+    /**
+     * Active TEACHER skills last touched before :cutoff — candidates for
+     * auto-deactivation once their teacher has no bookable slots left.
+     * The cutoff (based on updatedAt, not createdAt) is what gives a
+     * freshly-published skill a grace window: it won't even be considered
+     * until it's been sitting untouched for a while, so a teacher who just
+     * published and hasn't added availability yet is never caught by this.
+     */
+    @Query("""
+        SELECT us FROM UserSkill us
+        WHERE us.role = 'TEACHER'
+        AND us.isActive = true
+        AND us.updatedAt < :cutoff
+    """)
+    fun findStaleActiveTeacherSkills(@Param("cutoff") cutoff: java.time.LocalDateTime): List<UserSkill>
 }

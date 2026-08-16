@@ -40,6 +40,18 @@ interface TeacherAvailabilityRepository : JpaRepository<TeacherAvailability, Lon
         ORDER BY ta.slotStart ASC
     """)
     fun findAllAvailable(@Param("now") now: LocalDateTime): List<TeacherAvailability>
+
+    /**
+     * Distinct IDs of teachers who currently have at least one bookable
+     * (unbooked, future) availability slot. Used to tell which published
+     * TEACHER skills are still actually bookable vs. stale.
+     */
+    @Query("""
+        SELECT DISTINCT ta.teacher.id FROM TeacherAvailability ta
+        WHERE ta.isBooked = false
+        AND ta.slotStart > :now
+    """)
+    fun findDistinctTeacherIdsWithAvailableSlots(@Param("now") now: LocalDateTime): List<Long>
     /** Find slots for a teacher that overlap the given time range (for conflict detection) */
     @Query("""
         SELECT ta FROM TeacherAvailability ta

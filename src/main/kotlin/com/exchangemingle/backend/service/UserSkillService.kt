@@ -4,9 +4,11 @@ import com.exchangemingle.backend.dto.*
 import com.exchangemingle.backend.exception.*
 import com.exchangemingle.backend.model.*
 import com.exchangemingle.backend.repository.*
+import org.slf4j.LoggerFactory
 import org.springframework.cache.annotation.CacheEvict
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -15,8 +17,11 @@ class UserSkillService(
     private val userSkillRepository: UserSkillRepository,
     private val userRepository: UserRepository,
     private val skillRepository: SkillRepository,
-    private val sessionRepository: SessionRepository
+    private val sessionRepository: SessionRepository,
+    private val teacherAvailabilityRepository: TeacherAvailabilityRepository
 ) {
+
+    private val logger = LoggerFactory.getLogger(UserSkillService::class.java)
 
     @Transactional
     @CacheEvict(value = ["discovery-teachers"], allEntries = true, cacheManager = "redisCacheManager")
@@ -252,5 +257,55 @@ class UserSkillService(
             proofUrl = userSkill.proofUrl,
             isActive = userSkill.isActive
         )
+    }
+
+    /**
+     * Runs every 6 hours. Auto-deactivates published TEACHER skills once
+     * they're no longer actually bookable, so Explore doesn't keep showing
+     * a teacher card with no way to book them.
+     *
+     * A skill only qualifies once it's been untouched for 3+ days (updatedAt
+     * cutoff) — that grace window is what protects a teacher who just
+     * published and hasn't added availability yet, or who briefly runs out
+     * of slots between batches, from getting silently deactivated. Of those,
+     * only the ones whose teacher currently has zero unbooked future
+     * availability slots are turned off — availability isn't tracked per
+     * skill in this schema, so "bookable" is inherently a teacher-level
+     * question, not a per-skill one.
+     *
+     * This is a soft deactivation (isActive = false), the same mechanism
+     * removeUserSkill() already uses — never a hard delete. That preserves
+     * the teacher's session history and ratings, and re-adding availability
+     * naturally makes the skill reappear once they re-publish or edit it.
+     */
+    @Transactional
+    @Scheduled(cron = "0 0 */6 * * *")
+    @CacheEvict(value = ["discovery-teachers"], allEntries = true, cacheManager = "redisCacheManager")
+    fun deactivateStaleTeacherSkills() {
+        try {
+            val now = java.time.LocalDateTime.now()
+            val cutoff = now.minusDays(3)
+            val candidates = userSkillRepository.findStaleActiveTeacherSkills(cutoff)
+            if (candidates.isEmpty()) return
+
+            val bookableTeacherIds = teacherAvailabilityRepository
+                .findDistinctTeacherIdsWithAvailableSlots(now)
+                .toHashSet()
+
+            var deactivatedCount = 0
+            for (skill in candidates) {
+                val teacherId = skill.user?.id ?: continue
+                if (teacherId !in bookableTeacherIds) {
+                    skill.isActive = false
+                    userSkillRepository.save(skill)
+                    deactivatedCount++
+                }
+            }
+            if (deactivatedCount > 0) {
+                logger.info("Auto-deactivated $deactivatedCount stale teacher skill(s) with no bookable availability")
+            }
+        } catch (e: Exception) {
+            logger.error("deactivateStaleTeacherSkills error: ${e.message}", e)
+        }
     }
 }

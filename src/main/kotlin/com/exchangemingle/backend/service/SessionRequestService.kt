@@ -240,6 +240,24 @@ class SessionRequestService(
         }
     }
 
+    /**
+     * Runs once a day. Hard-deletes EXPIRED/CANCELLED requests that have sat
+     * untouched for 30+ days. expireOldRequests() above already makes these
+     * invisible on Explore after 7 days (OPEN → EXPIRED); this just stops
+     * that history from growing the table forever. 30 days gives plenty of
+     * room to look up a recent request (e.g. for a support question) before
+     * it's gone for good — ACCEPTED requests are never touched here.
+     */
+    @Transactional
+    @Scheduled(cron = "0 30 3 * * *")
+    fun purgeOldRequests() {
+        val cutoff = LocalDateTime.now().minusDays(30)
+        val deletedCount = sessionRequestRepository.deleteOldExpiredOrCancelled(cutoff)
+        if (deletedCount > 0) {
+            logger.info("Purged $deletedCount old expired/cancelled session requests")
+        }
+    }
+
     private fun mapToResponse(sr: SessionRequest): SessionRequestResponse {
         return SessionRequestResponse(
             id = sr.id,

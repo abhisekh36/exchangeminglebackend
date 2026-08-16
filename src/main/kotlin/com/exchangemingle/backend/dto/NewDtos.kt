@@ -139,7 +139,13 @@ data class AchievementResponse(
     val category: AchievementCategory,
     val currentCount: Int,
     val isUnlocked: Boolean,
-    val unlockedAt: LocalDateTime?
+    // Sent as an ISO-8601 Instant string (e.g. "2026-08-14T15:21:14Z"), not a raw
+    // LocalDateTime — same convention used everywhere else in this codebase
+    // (SearchService, TeacherAvailabilityService, NotificationService). The stored
+    // LocalDateTime is UTC wall-clock time; toInstant(ZoneOffset.UTC) turns it into
+    // a real, zone-aware instant so the frontend's Instant.parse() can read it and
+    // convert to the device's local time zone for display.
+    val unlockedAt: String?
 )
 
 data class DashboardResponse(

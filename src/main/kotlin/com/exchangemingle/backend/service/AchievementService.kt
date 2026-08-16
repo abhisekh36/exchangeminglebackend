@@ -137,7 +137,7 @@ class AchievementService(
                 category = a.category,
                 currentCount = ua?.currentCount ?: 0,
                 isUnlocked = ua?.isUnlocked ?: false,
-                unlockedAt = ua?.unlockedAt
+                unlockedAt = ua?.unlockedAt?.toInstant(java.time.ZoneOffset.UTC)?.toString()
             )
         }
     }

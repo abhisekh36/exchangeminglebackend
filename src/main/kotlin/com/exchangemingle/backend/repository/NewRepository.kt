@@ -41,6 +41,21 @@ interface SessionRequestRepository : JpaRepository<SessionRequest, Long> {
         WHERE sr.status = 'OPEN' AND sr.createdAt < :cutoff
     """)
     fun expireOldRequests(@Param("cutoff") cutoff: LocalDateTime, @Param("now") now: LocalDateTime): Int
+
+    /**
+     * Hard-deletes EXPIRED/CANCELLED requests older than :cutoff. These are
+     * already invisible on Explore (findByStatus only ever queries OPEN),
+     * so this is pure housekeeping to stop the table growing forever — never
+     * touches ACCEPTED requests, which stay linked to a real, bookable
+     * Session via scheduledSessionId and must be kept.
+     */
+    @Modifying
+    @Query("""
+        DELETE FROM SessionRequest sr
+        WHERE sr.status IN ('EXPIRED', 'CANCELLED')
+        AND sr.updatedAt < :cutoff
+    """)
+    fun deleteOldExpiredOrCancelled(@Param("cutoff") cutoff: LocalDateTime): Int
 }
 
 @Repository

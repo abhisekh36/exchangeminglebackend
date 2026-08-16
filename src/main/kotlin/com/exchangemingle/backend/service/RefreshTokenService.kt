@@ -15,8 +15,8 @@ class RefreshTokenService(
     private val refreshTokenRepository: RefreshTokenRepository
 ) {
 
-    @Value("\${jwt.refresh-expiration:604800000}")
-    private var refreshTokenDurationMs: Long = 604800000
+    @Value("\${jwt.refresh-expiration:2592000000}")
+    private var refreshTokenDurationMs: Long = 2592000000
 
     fun createRefreshToken(user: User): RefreshToken {
         val refreshToken = RefreshToken()
