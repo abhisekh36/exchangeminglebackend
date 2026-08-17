@@ -92,6 +92,16 @@ class Session(
 
     @Column(length = 500)
     var videoCallLink: String? = null,
+
+    // Set once the learner has seen and dismissed the "you're booked!"
+    // notification on Home for this session. Drives the red-dot badge on
+    // the Sessions tab and the banner card on the Home dashboard — a plain
+    // push notification alone doesn't create any lasting in-app record that
+    // "this needs attention," so without this field there was no way to
+    // show (or stop showing) that state reliably, especially across
+    // reinstalls/devices where a local-only flag wouldn't survive.
+    @Column(nullable = false)
+    var learnerAcknowledgedBooking: Boolean = false,
 ) {
     @PrePersist
     fun prePersist() {

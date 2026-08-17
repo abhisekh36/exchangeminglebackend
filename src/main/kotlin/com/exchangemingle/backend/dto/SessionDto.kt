@@ -70,7 +70,10 @@ data class SessionResponse(
     val studentFeedback: String? = null,
     // Timestamps
     val createdAt: String,
-    val updatedAt: String
+    val updatedAt: String,
+    // Has the learner seen/dismissed the "you're booked!" notification for
+    // this session yet? Drives the Home banner + Sessions tab red dot.
+    val learnerAcknowledgedBooking: Boolean = false
 )
 
 data class PagedSessionResponse(

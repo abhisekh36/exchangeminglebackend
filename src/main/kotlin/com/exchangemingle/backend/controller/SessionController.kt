@@ -115,6 +115,22 @@ class SessionController(
         return ResponseEntity.ok(sessionService.addFeedback(id, user.id, request))
     }
 
+    /**
+     * Called when the learner dismisses (or otherwise sees) the "you're
+     * booked!" banner/badge for a confirmed session on Home. Persisted
+     * server-side rather than kept purely local on-device so it stays
+     * consistent across reinstalls and multiple devices, and so a push
+     * notification alone isn't the only record that this happened.
+     */
+    @PatchMapping("/{id}/acknowledge-booking")
+    fun acknowledgeBooking(
+        @PathVariable id: Long,
+        @RequestHeader("Authorization") authHeader: String
+    ): ResponseEntity<SessionResponse> {
+        val user = userService.findByEmail(tokenEmail(authHeader))
+        return ResponseEntity.ok(sessionService.acknowledgeBooking(id, user.id))
+    }
+
     @GetMapping("/statistics")
     fun getMyStatistics(
         @RequestHeader("Authorization") authHeader: String

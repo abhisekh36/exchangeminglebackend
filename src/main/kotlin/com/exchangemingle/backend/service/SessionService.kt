@@ -334,6 +334,21 @@ class SessionService(
         return mapToSessionResponse(session)
     }
 
+    /** See SessionController.acknowledgeBooking's doc comment for why this exists. */
+    @Transactional
+    fun acknowledgeBooking(sessionId: Long, userId: Long): SessionResponse {
+        val session = sessionRepository.findById(sessionId)
+            .orElseThrow { SessionNotFoundException("Session not found with id: $sessionId") }
+
+        if (session.learner?.id != userId) {
+            throw InvalidSessionOperationException("You are not authorized to acknowledge this session")
+        }
+
+        session.learnerAcknowledgedBooking = true
+        val saved = sessionRepository.save(session)
+        return mapToSessionResponse(saved)
+    }
+
     fun getAllSessions(page: Int = 0, size: Int = 20): PagedSessionResponse {
         val pageable = PageRequest.of(page, size, Sort.by("createdAt").descending())
         val sessionsPage = sessionRepository.findAll(pageable)
@@ -885,7 +900,8 @@ class SessionService(
             teacherFeedback  = session.teacherFeedback,
             studentFeedback  = session.studentFeedback,
             createdAt        = session.createdAt.atZone(zone).toInstant().toString(),
-            updatedAt        = session.updatedAt.atZone(zone).toInstant().toString()
+            updatedAt        = session.updatedAt.atZone(zone).toInstant().toString(),
+            learnerAcknowledgedBooking = session.learnerAcknowledgedBooking
         )
     }
 }

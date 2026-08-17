@@ -16,7 +16,7 @@ class RateLimitService(
 
     companion object {
         private const val AUTH_REQUESTS_PER_MINUTE = 5
-        private const val EMAIL_REQUESTS_PER_HOUR = 3
+        private const val EMAIL_REQUESTS_PER_HOUR = 10
         private const val API_REQUESTS_PER_MINUTE = 100
     }
 
