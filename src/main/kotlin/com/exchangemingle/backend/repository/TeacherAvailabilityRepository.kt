@@ -11,12 +11,21 @@ import java.time.LocalDateTime
 @Repository
 interface TeacherAvailabilityRepository : JpaRepository<TeacherAvailability, Long> {
 
-    /** All upcoming available (not booked) slots for a teacher */
+    /**
+     * All upcoming available (not booked) slots for a teacher.
+     *
+     * Filtered by slotEnd (not slotStart) so a window stays visible and
+     * bookable for its *entire* remaining duration. Filtering by slotStart
+     * made a whole window (e.g. 5:00-6:30 PM) disappear the instant 5:00 PM
+     * passed, even though 5:01-6:30 PM was still perfectly bookable — the
+     * frontend's time picker is responsible for restricting hour/minute
+     * selection to what's actually left of the window.
+     */
     @Query("""
         SELECT ta FROM TeacherAvailability ta
         WHERE ta.teacher = :teacher
         AND ta.isBooked = false
-        AND ta.slotStart > :now
+        AND ta.slotEnd > :now
         ORDER BY ta.slotStart ASC
     """)
     fun findAvailableByTeacher(
@@ -36,20 +45,20 @@ interface TeacherAvailabilityRepository : JpaRepository<TeacherAvailability, Lon
     @Query("""
         SELECT ta FROM TeacherAvailability ta
         WHERE ta.isBooked = false
-        AND ta.slotStart > :now
+        AND ta.slotEnd > :now
         ORDER BY ta.slotStart ASC
     """)
     fun findAllAvailable(@Param("now") now: LocalDateTime): List<TeacherAvailability>
 
     /**
      * Distinct IDs of teachers who currently have at least one bookable
-     * (unbooked, future) availability slot. Used to tell which published
-     * TEACHER skills are still actually bookable vs. stale.
+     * (unbooked, not-yet-ended) availability slot. Used to tell which
+     * published TEACHER skills are still actually bookable vs. stale.
      */
     @Query("""
         SELECT DISTINCT ta.teacher.id FROM TeacherAvailability ta
         WHERE ta.isBooked = false
-        AND ta.slotStart > :now
+        AND ta.slotEnd > :now
     """)
     fun findDistinctTeacherIdsWithAvailableSlots(@Param("now") now: LocalDateTime): List<Long>
     /** Find slots for a teacher that overlap the given time range (for conflict detection) */
