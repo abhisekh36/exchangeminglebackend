@@ -141,6 +141,13 @@ class GlobalExceptionHandler {
         )
     }
 
+    @ExceptionHandler(SamePasswordException::class)
+    fun handleSamePassword(ex: SamePasswordException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+            ErrorResponse(status = HttpStatus.BAD_REQUEST.value(), error = "Same Password", message = ex.message ?: "You can't use your old password.")
+        )
+    }
+
     @ExceptionHandler(SessionRequestNotFoundException::class)
     fun handleSessionRequestNotFound(ex: SessionRequestNotFoundException): ResponseEntity<ErrorResponse> {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(

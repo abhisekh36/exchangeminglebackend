@@ -2,6 +2,7 @@ package com.exchangemingle.backend.service
 
 import com.exchangemingle.backend.exception.InvalidResetTokenException
 import com.exchangemingle.backend.exception.PasswordMismatchException
+import com.exchangemingle.backend.exception.SamePasswordException
 import com.exchangemingle.backend.exception.UserNotFoundException
 import com.exchangemingle.backend.model.PasswordResetToken
 import com.exchangemingle.backend.repository.PasswordResetTokenRepository
@@ -103,6 +104,13 @@ class PasswordResetService(
         }
         if (resetToken.expiryDate.isBefore(Instant.now())) {
             throw InvalidResetTokenException("This code has expired")
+        }
+
+        // Reject re-using the same password. Must run before the code is
+        // marked used so the user still has a valid, unspent code and can
+        // simply retry with a different password on the same screen.
+        if (passwordEncoder.matches(newPassword, user.password)) {
+            throw SamePasswordException()
         }
 
         // Mark code as used

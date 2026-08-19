@@ -4,7 +4,10 @@ import com.exchangemingle.backend.dto.*
 import com.exchangemingle.backend.exception.*
 import com.exchangemingle.backend.model.SessionRequest
 import com.exchangemingle.backend.model.SessionRequestStatus
+import com.exchangemingle.backend.model.SessionRequestOffer
+import com.exchangemingle.backend.model.OfferStatus
 import com.exchangemingle.backend.repository.SessionRequestRepository
+import com.exchangemingle.backend.repository.SessionRequestOfferRepository
 import com.exchangemingle.backend.repository.SkillRepository
 import com.exchangemingle.backend.repository.UserSkillRepository
 import com.exchangemingle.backend.model.SkillRole
@@ -22,6 +25,7 @@ import org.springframework.cache.annotation.CacheEvict
 @Service
 class SessionRequestService(
     private val sessionRequestRepository: SessionRequestRepository,
+    private val sessionRequestOfferRepository: SessionRequestOfferRepository,
     private val userRepository: UserRepository,
     private val skillRepository: SkillRepository,
     private val pushNotificationService: PushNotificationService,
@@ -71,13 +75,21 @@ class SessionRequestService(
         return mapToResponse(saved)
     }
 
+    /**
+     * A teacher offers to teach this request. Any number of teachers can do
+     * this concurrently — the request stays OPEN (still visible to other
+     * teachers) until the learner actually chooses one via chooseOffer().
+     * This replaced the old exclusive "first to accept wins" behavior, which
+     * locked the request to a single teacher immediately and hid it from
+     * everyone else even if that teacher never went on to schedule it.
+     */
     @Transactional
     fun acceptRequest(requestId: Long, teacherId: Long): SessionRequestResponse {
         val request = sessionRequestRepository.findById(requestId)
             .orElseThrow { SessionNotFoundException("Request not found: $requestId") }
 
         if (request.status != SessionRequestStatus.OPEN) {
-            throw InvalidSessionOperationException("Only open requests can be accepted")
+            throw InvalidSessionOperationException("This request is no longer open to new offers")
         }
 
         if (request.learner?.id == teacherId) {
@@ -87,11 +99,22 @@ class SessionRequestService(
         val teacher = userRepository.findById(teacherId)
             .orElseThrow { UserNotFoundException("Teacher not found: $teacherId") }
 
-        request.status = SessionRequestStatus.ACCEPTED
-        request.acceptedBy = teacher
-        request.acceptedAt = LocalDateTime.now()
+        val existing = sessionRequestOfferRepository.findBySessionRequestAndTeacherId(request, teacherId)
+        if (existing != null && existing.status == OfferStatus.PENDING) {
+            // Idempotent: teacher already has a live offer here, just return current state.
+            return mapToResponse(request)
+        }
 
-        val updated = sessionRequestRepository.save(request)
+        if (existing != null) {
+            // Re-offering after having withdrawn/been declined earlier.
+            existing.status = OfferStatus.PENDING
+            existing.chosenAt = null
+            sessionRequestOfferRepository.save(existing)
+        } else {
+            sessionRequestOfferRepository.save(
+                SessionRequestOffer(sessionRequest = request, teacher = teacher, status = OfferStatus.PENDING)
+            )
+        }
 
         request.learner?.fcmToken?.let { token ->
             pushNotificationService.sendSessionAcceptedNotification(
@@ -102,7 +125,132 @@ class SessionRequestService(
             )
         }
 
+        return mapToResponse(request)
+    }
+
+    /** All PENDING offers a learner can choose between for their own request. */
+    @Transactional(readOnly = true)
+    fun getOffers(requestId: Long, learnerId: Long): List<RequestOfferResponse> {
+        val request = sessionRequestRepository.findById(requestId)
+            .orElseThrow { SessionNotFoundException("Request not found: $requestId") }
+        if (request.learner?.id != learnerId) {
+            throw InvalidSessionOperationException("Only the learner who posted this request can view its offers")
+        }
+        return sessionRequestOfferRepository.findBySessionRequest(request)
+            .filter { it.status == OfferStatus.PENDING }
+            .map {
+                RequestOfferResponse(
+                    id = it.id,
+                    requestId = requestId,
+                    teacher = UserSummary(it.teacher!!.id, it.teacher!!.name, it.teacher!!.avatar),
+                    status = it.status.name,
+                    createdAt = it.createdAt,
+                    chosenAt = it.chosenAt
+                )
+            }
+    }
+
+    /**
+     * Learner picks one teacher out of possibly several who offered. Every
+     * other PENDING offer on the request is auto-declined (with a
+     * notification) and the request moves to MATCHED, waiting on the chosen
+     * teacher to actually pick a date/time.
+     */
+    @Transactional
+    fun chooseOffer(requestId: Long, learnerId: Long, offerId: Long): SessionRequestResponse {
+        val request = sessionRequestRepository.findById(requestId)
+            .orElseThrow { SessionNotFoundException("Request not found: $requestId") }
+
+        if (request.learner?.id != learnerId) {
+            throw InvalidSessionOperationException("Only the learner who posted this request can choose a teacher")
+        }
+        if (request.status != SessionRequestStatus.OPEN) {
+            throw InvalidSessionOperationException("A teacher has already been chosen for this request")
+        }
+
+        val chosen = sessionRequestOfferRepository.findById(offerId)
+            .orElseThrow { SessionRequestNotFoundException("Offer not found: $offerId") }
+        if (chosen.sessionRequest?.id != requestId || chosen.status != OfferStatus.PENDING) {
+            throw InvalidSessionOperationException("This offer is no longer available")
+        }
+
+        val now = LocalDateTime.now()
+        chosen.status = OfferStatus.CHOSEN
+        chosen.chosenAt = now
+        sessionRequestOfferRepository.save(chosen)
+
+        val chosenTeacher = chosen.teacher
+
+        // Decline everyone else who offered on this same request.
+        sessionRequestOfferRepository.findBySessionRequest(request)
+            .filter { it.status == OfferStatus.PENDING && it.id != chosen.id }
+            .forEach { other ->
+                other.status = OfferStatus.DECLINED
+                sessionRequestOfferRepository.save(other)
+                other.teacher?.fcmToken?.let { token ->
+                    pushNotificationService.sendOfferDeclinedNotification(
+                        deviceToken = token,
+                        requestId = requestId,
+                        skillName = request.skill?.name ?: "the skill"
+                    )
+                }
+            }
+
+        request.status = SessionRequestStatus.MATCHED
+        request.acceptedBy = chosenTeacher
+        request.acceptedAt = now
+        val updated = sessionRequestRepository.save(request)
+
+        chosenTeacher?.fcmToken?.let { token ->
+            pushNotificationService.sendOfferChosenNotification(
+                deviceToken = token,
+                requestId = requestId,
+                learnerName = request.learner?.name ?: "The learner",
+                skillName = request.skill?.name ?: "the skill"
+            )
+        }
+
         return mapToResponse(updated)
+    }
+
+    /**
+     * Requests where this teacher was chosen but never came back to pick a
+     * date/time — the reminder feed that fixes requests silently vanishing
+     * once "accepted" instead of nagging the teacher to finish scheduling.
+     */
+    @Transactional(readOnly = true)
+    fun getMyChosenUnscheduled(teacherId: Long): List<ChosenUnscheduledRequestResponse> {
+        return sessionRequestOfferRepository.findChosenUnscheduledByTeacher(teacherId).map { offer ->
+            val sr = offer.sessionRequest!!
+            ChosenUnscheduledRequestResponse(
+                offerId = offer.id,
+                requestId = sr.id,
+                learner = UserSummary(sr.learner!!.id, sr.learner!!.name, sr.learner!!.avatar),
+                skillName = sr.skill?.name ?: "",
+                durationMinutes = sr.durationMinutes,
+                chosenAt = offer.chosenAt
+            )
+        }
+    }
+
+    /**
+     * Lets a teacher's own request-detail screen figure out, on load, whether
+     * *this* teacher already has an offer here and what state it's in —
+     * instead of relying on screen-local state that resets to "not accepted
+     * yet" every time the teacher navigates away and back (the actual cause
+     * of accepted requests seeming to disappear).
+     */
+    @Transactional(readOnly = true)
+    fun getMyOfferForRequest(requestId: Long, teacherId: Long): MyOfferForRequestResponse {
+        val request = sessionRequestRepository.findById(requestId)
+            .orElseThrow { SessionNotFoundException("Request not found: $requestId") }
+        val offer = sessionRequestOfferRepository.findBySessionRequestAndTeacherId(request, teacherId)
+        return MyOfferForRequestResponse(
+            offerExists = offer != null && offer.status != OfferStatus.WITHDRAWN,
+            offerStatus = offer?.status?.name,
+            requestStatus = request.status,
+            scheduledSessionId = request.scheduledSessionId
+        )
     }
 
     /**
@@ -117,11 +265,11 @@ class SessionRequestService(
             .orElseThrow { SessionNotFoundException("Request not found: $requestId") }
 
         if (request.acceptedBy?.id != teacherId) {
-            throw InvalidSessionOperationException("Only the teacher who accepted this request can schedule it")
+            throw InvalidSessionOperationException("Only the teacher chosen for this request can schedule it")
         }
 
-        if (request.status != SessionRequestStatus.ACCEPTED) {
-            throw InvalidSessionOperationException("Only accepted requests can be scheduled")
+        if (request.status != SessionRequestStatus.MATCHED) {
+            throw InvalidSessionOperationException("Only a matched request can be scheduled")
         }
 
         if (request.scheduledSessionId != null) {
@@ -142,7 +290,13 @@ class SessionRequestService(
         )
 
         request.scheduledSessionId = sessionResponse.id
+        request.status = SessionRequestStatus.SCHEDULED
         sessionRequestRepository.save(request)
+
+        sessionRequestOfferRepository.findBySessionRequestAndTeacherId(request, teacherId)?.let { offer ->
+            offer.scheduledSessionId = sessionResponse.id
+            sessionRequestOfferRepository.save(offer)
+        }
 
         return sessionResponse
     }
@@ -259,6 +413,8 @@ class SessionRequestService(
     }
 
     private fun mapToResponse(sr: SessionRequest): SessionRequestResponse {
+        val pendingCount = sessionRequestOfferRepository.findBySessionRequest(sr)
+            .count { it.status == OfferStatus.PENDING }
         return SessionRequestResponse(
             id = sr.id,
             learner = UserSummary(sr.learner!!.id, sr.learner!!.name, sr.learner!!.avatar),
@@ -273,7 +429,8 @@ class SessionRequestService(
             createdAt = sr.createdAt,
             viewCount = sr.viewCount,
             interestCount = sr.interestCount,
-            scheduledSessionId = sr.scheduledSessionId
+            scheduledSessionId = sr.scheduledSessionId,
+            pendingOfferCount = pendingCount
         )
     }
 }

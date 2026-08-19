@@ -59,6 +59,40 @@ interface SessionRequestRepository : JpaRepository<SessionRequest, Long> {
 }
 
 @Repository
+interface SessionRequestOfferRepository : JpaRepository<SessionRequestOffer, Long> {
+
+    @Query(
+        value = "SELECT o FROM SessionRequestOffer o JOIN FETCH o.teacher WHERE o.sessionRequest = :request ORDER BY o.createdAt ASC",
+        countQuery = "SELECT COUNT(o) FROM SessionRequestOffer o WHERE o.sessionRequest = :request"
+    )
+    fun findBySessionRequest(@Param("request") request: SessionRequest): List<SessionRequestOffer>
+
+    fun findBySessionRequestAndTeacherId(sessionRequest: SessionRequest, teacherId: Long): SessionRequestOffer?
+
+    fun findBySessionRequestAndStatus(sessionRequest: SessionRequest, status: OfferStatus): List<SessionRequestOffer>
+
+    /**
+     * The reminder feed: this teacher was chosen by a learner but the request
+     * is still MATCHED (not yet SCHEDULED) — i.e. they never went back to
+     * pick a date/time. Without this query there was no way for a teacher
+     * to ever find their way back to an accepted-but-unscheduled request.
+     */
+    @Query(
+        """
+        SELECT o FROM SessionRequestOffer o
+        JOIN FETCH o.sessionRequest sr
+        JOIN FETCH sr.learner
+        JOIN FETCH sr.skill
+        WHERE o.teacher.id = :teacherId
+          AND o.status = 'CHOSEN'
+          AND sr.status = 'MATCHED'
+        ORDER BY o.chosenAt ASC
+        """
+    )
+    fun findChosenUnscheduledByTeacher(@Param("teacherId") teacherId: Long): List<SessionRequestOffer>
+}
+
+@Repository
 interface NotificationRepository : JpaRepository<Notification, Long> {
 
     fun findByUser(user: User, pageable: Pageable): Page<Notification>

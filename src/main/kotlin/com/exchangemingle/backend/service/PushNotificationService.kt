@@ -193,7 +193,7 @@ class PushNotificationService {
         )
     )
 
-    /** Learner gets this when a teacher accepts their public open request. */
+    /** Learner gets this when a teacher offers to teach their public open request. */
     fun sendSessionAcceptedNotification(
         deviceToken: String,
         requestId: Long,
@@ -201,8 +201,8 @@ class PushNotificationService {
         skillName: String
     ): Boolean = sendNotification(
         deviceToken = deviceToken,
-        title = "Your Request Was Accepted! 🎉",
-        body = "$teacherName accepted your request to learn $skillName",
+        title = "A Teacher Offered to Teach You! 🎉",
+        body = "$teacherName offered to teach you $skillName — pick who you'd like",
         data = mapOf(
             "type"      to "SESSION_ACCEPTED",
             "requestId" to requestId.toString(),
@@ -241,6 +241,39 @@ class PushNotificationService {
             "type"      to "TEACHER_INTERESTED",
             "requestId" to requestId.toString(),
             "action"    to "VIEW_MY_REQUESTS"
+        )
+    )
+
+    /** Teacher gets this when the learner picks THEM out of the teachers who offered. */
+    fun sendOfferChosenNotification(
+        deviceToken: String,
+        requestId: Long,
+        learnerName: String,
+        skillName: String
+    ): Boolean = sendNotification(
+        deviceToken = deviceToken,
+        title = "You Were Chosen! 🎉",
+        body = "$learnerName picked you to teach $skillName — pick a date & time to confirm it",
+        data = mapOf(
+            "type"      to "OFFER_CHOSEN",
+            "requestId" to requestId.toString(),
+            "action"    to "SCHEDULE_REQUEST"
+        )
+    )
+
+    /** Teacher gets this when the learner picks a different teacher for the request. */
+    fun sendOfferDeclinedNotification(
+        deviceToken: String,
+        requestId: Long,
+        skillName: String
+    ): Boolean = sendNotification(
+        deviceToken = deviceToken,
+        title = "Request No Longer Available",
+        body = "The learner chose another teacher for $skillName",
+        data = mapOf(
+            "type"      to "OFFER_DECLINED",
+            "requestId" to requestId.toString(),
+            "action"    to "VIEW_REQUESTS_FEED"
         )
     )
 

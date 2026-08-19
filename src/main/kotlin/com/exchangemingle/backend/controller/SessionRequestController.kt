@@ -39,6 +39,64 @@ class SessionRequestController(
     }
 
     /**
+     * All PENDING offers on this request — the learner uses this to see
+     * every teacher who's offered so far and choose one.
+     */
+    @GetMapping("/{id}/offers")
+    fun getOffers(
+        @PathVariable id: Long,
+        @RequestHeader("Authorization") authHeader: String
+    ): ResponseEntity<List<RequestOfferResponse>> {
+        val token = authHeader.substring(7)
+        val email = jwtService.extractUsername(token)
+        val user = userService.findByEmail(email)
+        return ResponseEntity.ok(sessionRequestService.getOffers(id, user.id))
+    }
+
+    /** Learner picks one of the offering teachers; every other offer is auto-declined. */
+    @PostMapping("/{id}/offers/{offerId}/choose")
+    fun chooseOffer(
+        @PathVariable id: Long,
+        @PathVariable offerId: Long,
+        @RequestHeader("Authorization") authHeader: String
+    ): ResponseEntity<SessionRequestResponse> {
+        val token = authHeader.substring(7)
+        val email = jwtService.extractUsername(token)
+        val user = userService.findByEmail(email)
+        return ResponseEntity.ok(sessionRequestService.chooseOffer(id, user.id, offerId))
+    }
+
+    /**
+     * Lets a teacher resume exactly where they left off on a specific
+     * request — whether they've already offered, been chosen, or nothing at
+     * all — instead of the screen always starting from scratch.
+     */
+    @GetMapping("/{id}/my-offer")
+    fun getMyOfferForRequest(
+        @PathVariable id: Long,
+        @RequestHeader("Authorization") authHeader: String
+    ): ResponseEntity<MyOfferForRequestResponse> {
+        val token = authHeader.substring(7)
+        val email = jwtService.extractUsername(token)
+        val user = userService.findByEmail(email)
+        return ResponseEntity.ok(sessionRequestService.getMyOfferForRequest(id, user.id))
+    }
+
+    /**
+     * The reminder feed: requests where this teacher was chosen but hasn't
+     * scheduled a date/time yet.
+     */
+    @GetMapping("/my-pending-schedules")
+    fun getMyChosenUnscheduled(
+        @RequestHeader("Authorization") authHeader: String
+    ): ResponseEntity<List<ChosenUnscheduledRequestResponse>> {
+        val token = authHeader.substring(7)
+        val email = jwtService.extractUsername(token)
+        val user = userService.findByEmail(email)
+        return ResponseEntity.ok(sessionRequestService.getMyChosenUnscheduled(user.id))
+    }
+
+    /**
      * Teacher picks a date/time for a request they've already accepted, which
      * actually creates the bookable Session. Previously "Accept & Schedule
      * Session" only did the accept half — there was no way to get from

@@ -15,6 +15,7 @@ class InvalidVerificationCodeException(message: String = "Invalid or expired ver
 class EmailAlreadyVerifiedException(message: String = "Email is already verified") : RuntimeException(message)
 class InvalidResetTokenException(message: String = "Invalid or expired reset token") : RuntimeException(message)
 class InvalidPasswordException(message: String = "Current password is incorrect") : RuntimeException(message)
+class SamePasswordException(message: String = "You can't use your old password.") : RuntimeException(message)
 
 class SessionRequestNotFoundException(message: String = "Session request not found") : RuntimeException(message)
 class AchievementNotFoundException(message: String = "Achievement not found") : RuntimeException(message)

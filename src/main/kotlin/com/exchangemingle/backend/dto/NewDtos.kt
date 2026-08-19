@@ -35,6 +35,38 @@ data class SessionRequestResponse(
     // Non-null once the accepting teacher has actually picked a date/time and
     // a real Session was created — lets the frontend show "Scheduled" and
     // link straight to the session instead of offering to schedule again.
+    val scheduledSessionId: Long? = null,
+    // How many teachers currently have a live (PENDING) offer on this
+    // request — lets the learner's list show "3 teachers offered" without a
+    // second call, and lets the UI hide the "choose a teacher" prompt once
+    // it's zero.
+    val pendingOfferCount: Int = 0
+)
+
+/** One teacher's offer on a request, from the learner's point of view. */
+data class RequestOfferResponse(
+    val id: Long,
+    val requestId: Long,
+    val teacher: UserSummary,
+    val status: String,
+    val createdAt: LocalDateTime,
+    val chosenAt: LocalDateTime?
+)
+
+/** A request this teacher was chosen for but hasn't scheduled yet — the reminder feed. */
+data class ChosenUnscheduledRequestResponse(
+    val offerId: Long,
+    val requestId: Long,
+    val learner: UserSummary,
+    val skillName: String,
+    val durationMinutes: Int,
+    val chosenAt: LocalDateTime?
+)
+
+data class MyOfferForRequestResponse(
+    val offerExists: Boolean,
+    val offerStatus: String? = null,      // PENDING / CHOSEN / DECLINED / WITHDRAWN
+    val requestStatus: SessionRequestStatus? = null,
     val scheduledSessionId: Long? = null
 )
 

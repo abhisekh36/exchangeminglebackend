@@ -2,6 +2,7 @@ package com.exchangemingle.backend.service
 
 import com.exchangemingle.backend.dto.*
 import com.exchangemingle.backend.exception.SkillNotFoundException
+import com.exchangemingle.backend.exception.SessionNotFoundException
 import com.exchangemingle.backend.model.SessionStatus
 import com.exchangemingle.backend.model.SkillRole
 import com.exchangemingle.backend.repository.SessionRequestRepository
@@ -173,5 +174,27 @@ class DiscoveryService(
             .map { (_, cards) -> cards.maxByOrNull { it.score }!! }
             .sortedByDescending { it.score }
             .take(5)
+    }
+
+    /**
+     * A single request by id, regardless of status — used so a teacher can
+     * jump straight back into a request they were chosen for (MATCHED) from
+     * a reminder, since the main open-requests feed only ever shows OPEN ones.
+     */
+    @Transactional(readOnly = true)
+    fun findRequestById(requestId: Long): OpenRequestCard {
+        val sr = sessionRequestRepository.findById(requestId)
+            .orElseThrow { SessionNotFoundException("Request not found: $requestId") }
+        return OpenRequestCard(
+            id = sr.id,
+            learner = UserSummary(sr.learner!!.id, sr.learner!!.name, sr.learner!!.avatar),
+            skillName = sr.skill!!.name,
+            skillCategory = sr.skill!!.category,
+            durationMinutes = sr.durationMinutes,
+            message = sr.message,
+            createdAt = sr.createdAt,
+            viewCount = sr.viewCount,
+            interestCount = sr.interestCount
+        )
     }
 }

@@ -31,6 +31,11 @@ class DiscoveryController(
         return ResponseEntity.ok(discoveryService.findOpenRequests(skillId, page, size))
     }
 
+    @GetMapping("/open-requests/{id}")
+    fun getRequestById(@PathVariable id: Long): ResponseEntity<OpenRequestCard> {
+        return ResponseEntity.ok(discoveryService.findRequestById(id))
+    }
+
     @GetMapping("/recommendations")
     fun getRecommendations(
         @RequestHeader("Authorization") authHeader: String
