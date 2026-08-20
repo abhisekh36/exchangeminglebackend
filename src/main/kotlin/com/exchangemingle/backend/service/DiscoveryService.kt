@@ -17,6 +17,7 @@ import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 @Service
 class DiscoveryService(
@@ -71,11 +72,19 @@ class DiscoveryService(
             val ratingScore    = (avgRating / 5.0) * 0.40
             val experienceScore = (minOf(totalTaught, 50L).toDouble() / 50.0) * 0.30
             val profileScore   = (if (teacher.bio != null && teacher.avatar != null) 1.0 else 0.0) * 0.10
-            val recentSessions = sessionRepository.countRecentCompletedByTeacher(teacher, LocalDateTime.now().minusDays(30))
+            // NOTE: TeacherAvailability.slotStart/slotEnd are stored as "UTC
+            // wall-clock digits" (see TeacherAvailabilityService) — every other
+            // place that compares against them uses LocalDateTime.now(ZoneOffset.UTC).
+            // A bare LocalDateTime.now() here used the server JVM's default
+            // timezone instead, so on any deployment not explicitly pinned to
+            // UTC this compared "now" in the wrong zone and made freshly
+            // published, currently-open slots read as unavailable (or the
+            // reverse). Matching the UTC convention used everywhere else fixes it.
+            val recentSessions = sessionRepository.countRecentCompletedByTeacher(teacher, LocalDateTime.now(ZoneOffset.UTC).minusDays(30))
             val recencyScore   = (if (recentSessions > 0) 1.0 else 0.0) * 0.20
             val totalScore     = ratingScore + experienceScore + recencyScore + profileScore
             val isAvailable    = teacherAvailabilityRepository
-                .findAvailableByTeacher(teacher, LocalDateTime.now())
+                .findAvailableByTeacher(teacher, LocalDateTime.now(ZoneOffset.UTC))
                 .isNotEmpty()
 
             postedAt to TeacherCard(
