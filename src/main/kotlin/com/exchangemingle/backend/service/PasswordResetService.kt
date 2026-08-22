@@ -7,6 +7,7 @@ import com.exchangemingle.backend.exception.UserNotFoundException
 import com.exchangemingle.backend.model.PasswordResetToken
 import com.exchangemingle.backend.repository.PasswordResetTokenRepository
 import com.exchangemingle.backend.repository.UserRepository
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -35,7 +36,19 @@ class PasswordResetService(
 
     companion object {
         private const val EXPIRATION_MINUTES = 15L
+
+        // Fixed reset code for the Play Store reviewer account only. Put
+        // this exact code in the Play Console "App access" instructions so
+        // the reviewer can complete forgot-password without ever opening
+        // the reviewer Gmail inbox (which sits behind its own Google
+        // sign-in security challenge that only the developer's phone can
+        // clear). Every other account still gets a real random code.
+        private const val REVIEWER_RESET_CODE = "482910"
     }
+
+    // Override via the APP_REVIEWER_EMAIL env var if this account ever changes.
+    @Value("\${app.reviewer.email:tripventuresco@gmail.com}")
+    private lateinit var reviewerEmail: String
 
     @Transactional
     fun createPasswordResetCode(email: String) {
@@ -45,8 +58,10 @@ class PasswordResetService(
         // Delete any existing codes for this user
         passwordResetTokenRepository.deleteByUser(user)
 
-        // Generate 6-digit code
-        val code = Random.nextInt(100000, 999999).toString()
+        val isReviewer = user.email == reviewerEmail.trim().lowercase()
+
+        // Fixed code for the reviewer, real random code for everyone else
+        val code = if (isReviewer) REVIEWER_RESET_CODE else Random.nextInt(100000, 999999).toString()
 
         val resetToken = PasswordResetToken(
             token = code,
