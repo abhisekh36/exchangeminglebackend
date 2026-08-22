@@ -19,7 +19,8 @@ import java.util.UUID
 
 @Service
 class VideoCallService(
-    private val sessionRepository: SessionRepository
+    private val sessionRepository: SessionRepository,
+    private val blockedUserService: BlockedUserService
 ) {
     private val log = LoggerFactory.getLogger(VideoCallService::class.java)
 
@@ -48,6 +49,18 @@ class VideoCallService(
         }
         if (session.teacher?.id != userId && session.learner?.id != userId) {
             throw InvalidSessionOperationException("You are not a participant in this session")
+        }
+
+        // Even a session confirmed before either side blocked the other
+        // shouldn't be joinable now — booking/scheduling/accepting are all
+        // blocked going forward, but a session that slipped through before
+        // this was added (or before the block itself happened) shouldn't
+        // still let two blocked users end up in a call together.
+        val teacherIdForBlockCheck = session.teacher?.id
+        val learnerIdForBlockCheck = session.learner?.id
+        if (teacherIdForBlockCheck != null && learnerIdForBlockCheck != null &&
+            blockedUserService.isBlocked(teacherIdForBlockCheck, learnerIdForBlockCheck)) {
+            throw InvalidSessionOperationException("This session is no longer available to join.")
         }
 
         val scheduledStart = session.scheduledAt
@@ -135,6 +148,11 @@ class VideoCallService(
         }
         if (session.teacher?.id != userId && session.learner?.id != userId) {
             throw InvalidSessionOperationException("You are not a participant in this session")
+        }
+        val teacherId2 = session.teacher?.id
+        val learnerId2 = session.learner?.id
+        if (teacherId2 != null && learnerId2 != null && blockedUserService.isBlocked(teacherId2, learnerId2)) {
+            throw InvalidSessionOperationException("This session is no longer available to join.")
         }
         session.scheduledAt?.let { enforceJoinWindow(it, session.durationMinutes) }
 

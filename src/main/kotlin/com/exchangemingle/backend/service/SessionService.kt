@@ -28,7 +28,8 @@ class SessionService(
     private val pushNotificationService: PushNotificationService,
     private val userSkillService: UserSkillService,
     private val teacherAvailabilityService: TeacherAvailabilityService,
-    private val achievementService: AchievementService
+    private val achievementService: AchievementService,
+    private val blockedUserService: BlockedUserService
 ) {
 
     companion object {
@@ -49,6 +50,15 @@ class SessionService(
         // Self-booking check
         if (learner.id == teacher.id) {
             throw SelfBookingException()
+        }
+
+        // Neither party can book with someone who has blocked (or is blocked
+        // by) the other — bidirectional, so it doesn't matter who blocked whom.
+        // Previously nothing checked this at all: blocking someone only hid
+        // them from the Blocked Users unblock list, but did nothing to stop
+        // new sessions from being booked between the two.
+        if (blockedUserService.isBlocked(learner.id, teacher.id)) {
+            throw InvalidSessionOperationException("You can't book a session with this user.")
         }
 
 
@@ -175,6 +185,14 @@ class SessionService(
             throw SelfBookingException()
         }
 
+        // Same enforcement as createSession above — this path schedules a
+        // session for a request that was chosen/created before either side
+        // blocked the other, so it needs the same check: an existing
+        // relationship doesn't grandfather past a block.
+        if (blockedUserService.isBlocked(learner.id, teacher.id)) {
+            throw InvalidSessionOperationException("You can't schedule a session with this user.")
+        }
+
         if (learner.status == UserStatus.SUSPENDED) {
             learner.suspendedUntil?.let { until ->
                 if (LocalDateTime.now().isBefore(until)) {
@@ -268,6 +286,14 @@ class SessionService(
 
         if (session.status != SessionStatus.PENDING) {
             throw InvalidSessionOperationException("Only pending sessions can be accepted")
+        }
+
+        // A block placed after this PENDING request was created (but before
+        // it was accepted) should still stop it from being confirmed — same
+        // reasoning as the two checks above.
+        val learnerIdForBlockCheck = session.learner?.id
+        if (learnerIdForBlockCheck != null && blockedUserService.isBlocked(learnerIdForBlockCheck, teacherId)) {
+            throw InvalidSessionOperationException("You can't accept a session from this user.")
         }
 
         session.status = SessionStatus.CONFIRMED
